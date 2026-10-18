@@ -119,3 +119,32 @@ BiliGetter\bin\Release\net10.0-windows\win-x64\publish\BiliGetter.exe
   在只读环境里运行会无声退出。普通用户环境不受影响。
 - 目标框架从 net48 升到 net10 后，**旧的 `bili-cookies.txt` / `bili-getter.ini`
   可以直接复用**，不需要重新登录或重设输出目录。
+
+## 常见故障：下载报 `Access is denied`（错误 5）
+
+**现象**：aria2c 报 `Failed to open the file ...\.biliget-tmp\<guid>\v.m4s, cause: Access is denied`，
+ffmpeg 随后也报 `Error opening output ...mp4: Permission denied`。
+
+**根因**：不是输出目录的问题，而是**工具不在受信任位置**。
+Windows Defender「受控文件夹访问」按**可执行文件路径**放行 ——
+`BiliGetter.exe` 被放行了，但放在别处的 `aria2c.exe` / `ffmpeg.exe` 没有，
+所以它们创建**任何**文件都会被拒（`errNum=5`）。
+
+实测对照（同一台机器）：
+
+| 输出目录 | 工具位置 | 结果 |
+| --- | --- | --- |
+| `...\BiliGetter\dl` | 外部路径 | 失败 |
+| `D:\Downloads\123` | 外部路径（未改） | 失败（证明输出目录无关） |
+| `...\BiliGetter\dl` | 移到程序目录 | 成功（4K 16 集 / 4.31 GB） |
+
+**解决（按省事程度）**：
+
+1. **把 `aria2c.exe` 和 `ffmpeg.exe` 放进 `BiliGetter.exe` 同目录** —— `Tools.Find`
+   本来就优先找自己的目录，不需要额外设置。（已实测有效）
+2. 在「受控文件夹访问 → 允许应用通过」里逐个添加这两个 exe 的完整路径。
+3. 换一个不受保护的输出目录（治标，且实测**不总能解决**，因为变量是工具而非目录）。
+
+程序自身也有两道防线：开下前会试写一个探针文件（能发现"目录完全不可写"），
+以及 aria2c 失败后自动回退到内置下载器。但探针由主程序执行，无法发现
+"主程序能写、子进程不能写"这种情况 —— 所以上面的第 1 条仍是最可靠的配置。
