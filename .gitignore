@@ -1,4 +1,4 @@
-# ===============================================================
+﻿# ===============================================================
 # BiliGetter —— Visual Studio 工程（仓库根）
 #
 # 本仓库根目录是 VisualStudioProject\，只装「源码 + 工程 + 文档」。
@@ -27,3 +27,11 @@ publish/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# ---- 本地运行时文件（正常都在仓库目录之外；这条是防止误放进来）----
+bili-cookies.txt
+bili-getter.ini
+ffmpeg.exe
+aria2c.exe
+*.mp4
+*.m4s
