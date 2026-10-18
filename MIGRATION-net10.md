@@ -115,20 +115,48 @@ dotnet publish BiliGetter\BiliGetter.csproj -c Release
 
 ---
 
-## 七、遗留问题：本机构建产物无法启动（未解决）
+## 七、一个诊断陷阱：WinExe 的 stdout 不会被 PowerShell 等待或捕获
 
-**现象**：本次会话后期，任何重新构建出的 `net10` 产物（单文件、非单文件、
-关闭压缩的单文件、214 个 DLL 的完整自包含目录，四种都试过）**启动后不执行任何代码**：
-进程 exit 0、零输出、`Program.Main` 里的诊断日志也没写出。
-而同一目录下 **net48 旧版仍正常工作**，`cmd` 等原生程序也正常。
+排查过程中曾一度误判「net10 产物启动后不执行任何代码」——现象是进程 exit 0、零输出，
+连塞在 `Program.Main` 里的诊断日志都没出现。**那个结论是错的。** 真相是：
 
-**结论**：不是源码问题（回退到已提交的可用版本重新构建，同样无法运行），
-也不是打包参数问题（四种形态一致失效）。指向**本机的 .NET 构建/运行时包状态**——
-同一环境还伴随 `dotnet build BiliGetter.sln` 只报「0 个错误」而失败、
-`dotnet workload update` 警告等异常。
+本程序输出类型是 `WinExe`（图形界面需要这样，双击不弹黑框）。
+`pwsh` 把 `WinExe` 当 GUI 程序处理：**既不等待它退出，也不捕获它的 stdout**。
+于是 `$out = & BiliGetter.exe --cli tools` 会立刻返回空数组，`$LASTEXITCODE` 也不会被设置。
+与此同时程序其实在正常执行、正常输出，只是输出没人接。
 
-**因此**：便携目录里的 `BiliGetter.exe` / `BiliGetter-cli.exe` 已**恢复为 net48 版**（可用）；
-本次重构的 net10 产物暂时移到了 `BiliGetter-net10.exe` 仅作留档，**不建议使用**。
+**正确的验证方式**（下面两种都实际用过）：
 
-**建议的下一步**：在 SDK 状态正常的机器上（或先执行 `dotnet workload update`）重新
-`dotnet publish`，再跑一遍第四节的验证表。源码本身在 `refactor/net10` 分支上已就绪。
+```powershell
+# 方式一：用 cmd 重定向到文件，再按控制台代码页解码（中文 Windows 是 GBK）
+cmd /c "BiliGetter.exe --cli tools > out.txt 2>&1"
+[Text.Encoding]::GetEncoding(936).GetString([IO.File]::ReadAllBytes("out.txt"))
+
+# 方式二：直接看文件产物（qr 写 PNG、dl 写 mp4、ui 写 PNG）
+```
+
+**结论：对 `WinExe` 不要用 stdout 判断成败，要看文件产物。**
+
+对照实验：一个 5 行的最小 `net10` WinForms 探针（同样的自包含单文件配置）在同一环境下
+能正常写标记文件并报告 `clr=10.0.2`，证明运行时与构建都没问题。
+
+## 八、最终验证结果（net10 已部署为正式版）
+
+| 检查项 | 结果 |
+| --- | --- |
+| 编译 / 发布 | exit 0，**0 警告**；单文件 `BiliGetter.exe` **46.9 MB** |
+| 工具查找 | 从 `publish\` 与便携目录均定位到便携版 ffmpeg / aria2c |
+| 中文输出 | 原始字节为 GBK，解码完全正确（中文标题与提示文案均正常） |
+| 登录 / Cookie | 便携目录下 `login=True`，正确读出账号 |
+| 清晰度自动最高 | **1080P+ 高码率 1920x1080 avc1.640032**（未登录时 480P） |
+| 单视频 | 1 项，中文标题无乱码 |
+| 下载 + 合并 | aria2c → ffmpeg → mp4 **14,767,125 字节**，与 net48 版字节数完全相同 |
+| 充电专属 | `is_upower_exclusive=true` / `is_upower_play=false`，提示准确，**不产出假文件** |
+| 课程（cheese） | **8 项**，序号 P01/P02/P05/P08/P09/P12/P13/P14 与基线一致 |
+| 合集 | **20 项**，目录名正确 |
+| UP 主页递归 | **453 项**（5 合集 + 6 系列全量），散装投稿 -352 优雅降级，耗时 **9 秒** |
+| GUI | 渲染 1000x720 正常 |
+
+**已知既有缺口（非本次迁移引入）**：课程单集的 playurl 返回 `-403 签名校验失败`。
+课程「列表」正确，但「下载」这条路在 net48 基线里也从未验证通过，
+需要单独修 `CheesePlayUrl` 的参数。
