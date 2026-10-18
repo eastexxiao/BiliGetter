@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 图形界面版：BiliGetter.exe -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>BiliGetter</RootNamespace>
+    <AssemblyName>BiliGetter</AssemblyName>
+    <ApplicationIcon />
+  </PropertyGroup>
+
+  <!-- .NET Framework 下 WinForms 不是自动引用的，要显式加 -->
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+  <!--
+    共享核心源码。用「链接」而不是「项目引用」，这样每个 exe 都是自包含的
+    单文件程序，旁边不需要额外放一个 BiliGetter.Core.dll（便携性要求）。
+    src\verify 是独立的二维码自检工具，没有放在 src 根目录，所以不会被包含。
+  -->
+  <ItemGroup>
+    <Compile Include="..\src\*.cs" LinkBase="src" />
+  </ItemGroup>
+
+</Project>

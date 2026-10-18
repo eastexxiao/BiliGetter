@@ -1,0 +1,29 @@
+# ===============================================================
+# BiliGetter —— Visual Studio 工程（仓库根）
+#
+# 本仓库根目录是 VisualStudioProject\，只装「源码 + 工程 + 文档」。
+# 便携运行目录里的东西（ffmpeg.exe、aria2c.exe、编译出的 exe、
+# bili-cookies.txt、bili-getter.ini、下载的视频）都在仓库上一级 ..\，
+# 本来就不在版本控制范围内，所以这里无需（也无法）忽略它们。
+# ===============================================================
+
+# ---- Visual Studio / MSBuild 产物 ----
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userprefs
+*.cache
+
+# ---- 打包 / 发布 ----
+publish/
+*.nupkg
+
+# ---- 杂项 ----
+*.log
+*.tmp
+*.bak
+Thumbs.db
+desktop.ini
+.DS_Store
