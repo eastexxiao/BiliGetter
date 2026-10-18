@@ -112,6 +112,28 @@ BiliGetter\bin\Release\net10.0-windows\win-x64\publish\BiliGetter.exe
 程序会先找最近的同名 `ffmpeg.exe`（向上 8 层），所以从 `publish\` 目录直接 F5
 也能用到便携版的那一份。
 
+## 代码结构（MVVM 分层）
+
+界面层分四层，箭头单向：**View → ViewModel → Service → Core**。
+
+| 层 | 做什么 | 关键约束 |
+|---|---|---|
+| `*.xaml` | 布局 + 绑定 | 不写业务判断，按钮一律 `Command` |
+| `*ViewModel.cs` | 状态、命令、校验 | 不出现控件、`MessageBox`、`File`、`Dispatcher` |
+| `*Service.cs` | 配置、网络、进程、对话框 | 不弹窗（对话框实现除外）、不认 UI 概念 |
+| `BiliApi/Fetcher/Download` | 接口、选流、下载、合并 | 不认识上面三层，可被任何前端复用 |
+
+`MainWindow.xaml.cs` 只有 24 行（挂 `DataContext` + 日志滚动），业务全在 `MainViewModel`。
+
+**完整讲解见 [MVVM.md](MVVM.md)** —— 含三条调用链、机制逐个说明、八条边界规则、
+加新功能的配方、以及 `cli vmtest` 为什么能证明分层成立。
+
+验证分层是否还站得住：
+
+    BiliGetter.exe cli vmtest BV1GJ411x7h7 1
+
+不开窗口直接驱动 `MainViewModel` 走「解析 → 勾选 → 下载」，跑通即说明
+ViewModel 没有偷偷依赖窗口。
 ## 便携性：相对路径与整体搬移
 
 整个文件夹可以整体搬到 U 盘或别的机器，不改任何配置。规则只有一条：
