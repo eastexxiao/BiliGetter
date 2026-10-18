@@ -74,6 +74,32 @@ BiliGetter.exe list <地址>       也能识别（首参是已知子命令）
 所以图形界面和命令行合并成同一个 exe，靠参数分流；
 源码也就在一个项目里，不需要链接或项目引用了。
 
+## 两种发布方式（体积差 160 倍）
+
+| 方式 | 附加参数 | 产物 | 目标机器要求 |
+| --- | --- | --- | --- |
+| 自包含单文件（默认） | 无 | 约 **46.9 MB** | 无需安装任何运行时 |
+| 依赖框架单文件 | `-p:SelfContained=false`
+`-p:EnableCompressionInSingleFile=false`
+`-p:IncludeNativeLibrariesForSelfExtract=false` | 约 **0.29 MB** | 需装 .NET 10 桌面运行时 |
+
+完整命令示例（依赖框架版）：
+
+```powershell
+dotnet publish BiliGetter\BiliGetter.csproj -c Release `
+  -p:SelfContained=false -p:EnableCompressionInSingleFile=false `
+  -p:IncludeNativeLibrariesForSelfExtract=false
+```
+
+目标机器装一次运行时即可：`winget install Microsoft.DotNet.DesktopRuntime.10`
+
+**为什么推荐依赖框架版**：它只有 0.29 MB、单文件、**不做自解压**——启动快，
+也不容易被 Defender 当成可疑的自解压程序反复扫描。自包含版那 46.9 MB 里装的是
+整个 .NET 运行时，每次启动都要解压到 `%TEMP%\.net\...`，这正是「点了允许但窗口
+半天不出来」的来源。
+
+依赖框架版需要目标机器已有运行时；没有时系统会弹窗提示去下载。
+如果要求「拷到任何 Win10/11 都能直接双击」，就用自包含版。
 ## 更新便携版
 
 发布产物：
