@@ -34,7 +34,12 @@ namespace BiliGetter
             {
                 Application app = new Application();
                 app.ShutdownMode = ShutdownMode.OnMainWindowClose;
-                app.Run(new MainWindow());
+
+                // 组合根装配 ViewModel 与三个窗口，Program 只负责启动
+                MainViewModel vm = AppHost.CreateMainViewModel(true);
+                MainWindow w = new MainWindow(vm);
+                w.Closing += delegate { vm.SaveState(); };
+                app.Run(w);
             }
             catch (Exception ex)
             {

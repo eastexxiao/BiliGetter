@@ -47,20 +47,22 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 二维码固定白底，避免深色主题下反色导致扫不出来 -->
+        <!-- 二维码固定白底，避免深色背景下反色导致扫不出来 -->
         <Border Grid.Row="0" Background="White" CornerRadius="6" Padding="10">
-            <Image x:Name="ImgQr" Stretch="Uniform"
+            <Image Source="{Binding QrImage}" Stretch="Uniform"
                    RenderOptions.BitmapScalingMode="NearestNeighbor"/>
         </Border>
 
-        <TextBlock x:Name="TxtStatus" Grid.Row="1" Text="正在获取二维码…"
+        <TextBlock Grid.Row="1" Text="{Binding StatusText}"
                    TextAlignment="Center" TextWrapping="Wrap"
                    Margin="0,14,0,14" MinHeight="42"/>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center">
-            <Button x:Name="BtnBrowser" Content="在浏览器中打开" IsEnabled="False" Click="BtnBrowser_Click"/>
-            <Button x:Name="BtnCopy" Content="复制链接" IsEnabled="False" Click="BtnCopy_Click"/>
-            <Button x:Name="BtnCancel" Content="取消" Click="BtnCancel_Click"/>
+            <Button Content="在浏览器中打开" Command="{Binding OpenInBrowserCommand}"
+                    IsEnabled="{Binding CanUseLink}"/>
+            <Button Content="复制链接" Command="{Binding CopyLinkCommand}"
+                    IsEnabled="{Binding CanUseLink}"/>
+            <Button Content="取消" Command="{Binding CancelCommand}"/>
         </StackPanel>
     </Grid>
 </Window>

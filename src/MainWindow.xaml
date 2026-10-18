@@ -7,8 +7,8 @@
         FontFamily="Microsoft YaHei UI" FontSize="13">
 
     <Window.Resources>
-        <!-- 卡片：浅灰底 + 淡边框 + 圆角。整体强制浅色，避免跟随系统深色后
-             自定义颜色与主题前景撞在一起导致提示文字看不清。 -->
+        <!-- 卡片：浅灰底 + 淡边框 + 圆角。整体固定浅色，不跟随系统深色，
+             否则自定义颜色和控件模板的颜色会拼在一起。 -->
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="Padding" Value="14,12"/>
@@ -28,9 +28,10 @@
             <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+
         <!--
           关键：每类控件都显式给浅色，不依赖系统 / Fluent 主题解析。
-          之前用 ThemeMode 只让「自己设的颜色」变浅，控件模板仍是系统深色，
+          用 ThemeMode 只让「自己设的颜色」变浅，控件模板仍是系统深色，
           结果是卡片浅、按钮和表格深，观感割裂。
         -->
         <Style TargetType="Button">
@@ -140,11 +141,11 @@
                 <TextBlock Text="课程 · 合集 · 系列 · UP 全量" Style="{StaticResource Hint}" Margin="12,0,0,2"
                            VerticalAlignment="Bottom"/>
             </StackPanel>
-            <TextBlock x:Name="TxtAccount" Grid.Column="1" Style="{StaticResource Hint}"
+            <TextBlock Grid.Column="1" Text="{Binding AccountText}" Style="{StaticResource Hint}"
                        HorizontalAlignment="Right" Margin="16,0,16,0"/>
             <StackPanel Grid.Column="2" Orientation="Horizontal">
-                <Button x:Name="BtnLogin" Content="登录（扫码）" Click="BtnLogin_Click"/>
-                <Button x:Name="BtnLogout" Content="退出登录" Click="BtnLogout_Click"/>
+                <Button Content="登录（扫码）" Command="{Binding LoginCommand}"/>
+                <Button Content="退出登录" Command="{Binding LogoutCommand}"/>
             </StackPanel>
         </Grid>
 
@@ -164,43 +165,57 @@
                 </Grid.ColumnDefinitions>
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="地址" Style="{StaticResource Caption}"/>
-                <TextBox x:Name="TxtUrl" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"
+                <TextBox Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"
+                         Text="{Binding Url, UpdateSourceTrigger=PropertyChanged}"
                          ToolTip="BV 号 / 视频链接 / UP 主页 / 合集 / 系列 / 课堂链接"/>
                 <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal" Margin="0,0,0,8">
-                    <Button x:Name="BtnFetch" Content="解析" Click="BtnFetch_Click" IsDefault="True"/>
-                    <Button x:Name="BtnPaste" Content="粘贴" Click="BtnPaste_Click"/>
+                    <Button Content="解析" Command="{Binding FetchCommand}" IsDefault="True"/>
+                    <Button Content="粘贴" Command="{Binding PasteCommand}"/>
                 </StackPanel>
 
                 <TextBlock Grid.Row="1" Grid.Column="0" Text="输出" Style="{StaticResource Caption}"/>
-                <TextBox x:Name="TxtOut" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
+                <TextBox Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"
+                         Text="{Binding OutDir, UpdateSourceTrigger=PropertyChanged}"/>
                 <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" Margin="0,0,0,8">
-                    <Button x:Name="BtnBrowse" Content="浏览…" Click="BtnBrowse_Click"/>
-                    <Button x:Name="BtnOpenDir" Content="打开目录" Click="BtnOpenDir_Click"/>
+                    <Button Content="浏览…" Command="{Binding BrowseCommand}"/>
+                    <Button Content="打开目录" Command="{Binding OpenDirCommand}"/>
                 </StackPanel>
 
                 <TextBlock Grid.Row="2" Grid.Column="0" Text="选项" Style="{StaticResource Caption}"/>
                 <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal">
-                    <ComboBox x:Name="CmbQuality"/>
-                    <CheckBox x:Name="ChkAria2c" Content="aria2c 多线程加速" Margin="16,0,0,0"
-                              VerticalAlignment="Center"/>
+                    <ComboBox ItemsSource="{Binding QualityItems}"
+                              SelectedIndex="{Binding QualityIndex}"/>
+                    <CheckBox Content="aria2c 多线程加速" Margin="16,0,0,0"
+                              IsChecked="{Binding UseAria2c}"
+                              IsEnabled="{Binding Aria2cAvailable}"/>
                 </StackPanel>
                 <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal">
-                    <Button x:Name="BtnTools" Content="工具路径…" Click="BtnTools_Click"/>
+                    <Button Content="工具路径…" Command="{Binding ShowToolsCommand}"/>
                 </StackPanel>
 
-                <!-- 工具状态单独一行，路径长了也不挤其他控件 -->
-                <TextBlock x:Name="TxtTools" Grid.Row="3" Grid.ColumnSpan="3"
-                           Style="{StaticResource Hint}" Margin="0,10,0,0"/>
+                <!-- 工具状态单独一行；ffmpeg 找不到时变红 -->
+                <TextBlock Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding ToolText}" Margin="0,10,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource Hint}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ToolsOk}" Value="False">
+                                    <Setter Property="Foreground" Value="#FFB22222"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
             </Grid>
         </Border>
 
         <!-- 项目列表 -->
-        <DataGrid x:Name="Grid1" Grid.Row="2" AutoGenerateColumns="False" IsReadOnly="False"
+        <DataGrid Grid.Row="2" ItemsSource="{Binding Items}"
+                  AutoGenerateColumns="False" IsReadOnly="False"
                   CanUserAddRows="False" CanUserDeleteRows="False" CanUserResizeRows="False"
                   CanUserSortColumns="False" HeadersVisibility="Column"
                   GridLinesVisibility="Horizontal" RowHeaderWidth="0"
                   SelectionMode="Extended" SelectionUnit="FullRow"
-                  EnableRowVirtualization="True" AlternatingRowBackground="#FFF7F7F7"
+                  EnableRowVirtualization="True"
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled">
             <DataGrid.Columns>
                 <DataGridCheckBoxColumn Header="选" Width="44"
@@ -214,23 +229,24 @@
             </DataGrid.Columns>
         </DataGrid>
 
-        <!-- 当前文件的实时进度与速度。aria2c（多线程）和内置下载器（单线程）
-             都会填这一行：前者解析 aria2c 自己的摘要行，后者按块统计字节。 -->
+        <!-- 当前文件的实时进度与速度 -->
         <Grid Grid.Row="3" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <TextBlock x:Name="TxtTransfer" Grid.Column="0" Style="{StaticResource Hint}"
-                       MinWidth="360" MaxWidth="560" Text=""/>
-            <ProgressBar x:Name="BarFile" Grid.Column="1" Height="6" Margin="14,0"
-                         VerticalAlignment="Center" Minimum="0" Maximum="100" Value="0"/>
-            <TextBlock x:Name="TxtSpeed" Grid.Column="2" Style="{StaticResource Hint}"
-                       MinWidth="92" TextAlignment="Right" Text=""/>
+            <TextBlock Grid.Column="0" Text="{Binding TransferText}" Style="{StaticResource Hint}"
+                       MinWidth="360" MaxWidth="560"/>
+            <ProgressBar Grid.Column="1" Height="6" Margin="14,0" VerticalAlignment="Center"
+                         Minimum="0" Maximum="100"
+                         Value="{Binding FilePercent}"
+                         IsIndeterminate="{Binding FileIndeterminate}"/>
+            <TextBlock Grid.Column="2" Text="{Binding SpeedText}" Style="{StaticResource Hint}"
+                       MinWidth="92" TextAlignment="Right"/>
         </Grid>
 
-        <!-- 动作栏 -->
+        <!-- 动作栏 + 整体进度 -->
         <Grid Grid.Row="4" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
@@ -238,15 +254,15 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Orientation="Horizontal">
-                <Button x:Name="BtnSelectAll" Content="全选" Click="BtnSelectAll_Click" Margin="0,0,0,0"/>
-                <Button x:Name="BtnSelectNone" Content="全不选" Click="BtnSelectNone_Click"/>
-                <Button x:Name="BtnDownload" Content="开始下载" Click="BtnDownload_Click" FontWeight="SemiBold"/>
-                <Button x:Name="BtnStop" Content="停止" Click="BtnStop_Click" IsEnabled="False"/>
+                <Button Content="全选" Command="{Binding SelectAllCommand}" Margin="0,0,0,0"/>
+                <Button Content="全不选" Command="{Binding SelectNoneCommand}"/>
+                <Button Content="开始下载" Command="{Binding DownloadCommand}" FontWeight="SemiBold"/>
+                <Button Content="停止" Command="{Binding StopCommand}"/>
             </StackPanel>
-            <ProgressBar x:Name="Bar" Grid.Column="1" Height="8" Margin="18,0"
-                         VerticalAlignment="Center" Minimum="0" Maximum="1" Value="0"/>
-            <TextBlock x:Name="TxtSummary" Grid.Column="2" Style="{StaticResource Hint}"
-                       MinWidth="132" TextAlignment="Right" Margin="0,0,6,0" Text="未解析"/>
+            <ProgressBar Grid.Column="1" Height="8" Margin="18,0" VerticalAlignment="Center"
+                         Minimum="0" Maximum="100" Value="{Binding OverallPercent}"/>
+            <TextBlock Grid.Column="2" Text="{Binding Summary}" Style="{StaticResource Hint}"
+                       MinWidth="132" TextAlignment="Right" Margin="0,0,6,0"/>
         </Grid>
 
         <!-- 日志 -->
@@ -254,7 +270,9 @@
             <TextBox x:Name="TxtLog" Height="130" IsReadOnly="True" AcceptsReturn="True"
                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
                      TextWrapping="NoWrap" FontFamily="Consolas" FontSize="12"
-                     Padding="8" Margin="0,6,0,0"/>
+                     Padding="8" Margin="0,6,0,0"
+                     Text="{Binding LogText, Mode=OneWay}"
+                     TextChanged="LogTextChanged"/>
         </Expander>
     </Grid>
     </Border>

@@ -11,7 +11,7 @@ namespace BiliGetter
     {
         /// <summary>支持的子命令（程序入口据此判断是否进入命令行模式）。</summary>
         public static readonly string[] Commands = new string[] {
-            "tools", "list", "dl", "poll", "qr", "ui"
+            "tools", "list", "dl", "poll", "qr", "ui", "vmtest"
         };
 
         public static int Run(string[] args)
@@ -48,9 +48,11 @@ namespace BiliGetter
                     case "list": return CmdList(s, args[1]);
                     case "dl": return CmdDl(s, args[1], args.Length > 2 ? int.Parse(args[2]) : 4, args.Length > 3 ? int.Parse(args[3]) : 1);
                     case "ui": return CmdUi(args.Length > 1 ? args[1] : "ui.png");
+                    case "vmtest": return CmdVmTest(args[1], args.Length > 2 ? int.Parse(args[2]) : 0);
                     case "poll": return CmdPoll(s);
                     default:
-                        Console.WriteLine("usage: qr <png> | poll | list <target> | dl <target> <capIndex> <maxItems> | ui <png>");
+                        Console.WriteLine("usage: qr <png> | poll | list <target> | dl <target> <capIndex> <maxItems>"
+                            + " | ui <png> | vmtest <target> [maxItems]");
                         return 2;
                 }
             }
@@ -222,7 +224,9 @@ namespace BiliGetter
                 app.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
             }
 
-            MainWindow w = new MainWindow(true);
+            MainViewModel vm = AppHost.CreateMainViewModel(false);
+            MainWindow w = new MainWindow(vm);
+            w.Closing += delegate { vm.SaveState(); };
             w.WindowStartupLocation = System.Windows.WindowStartupLocation.Manual;
             w.Left = -30000;
             w.Top = -30000;
@@ -249,7 +253,7 @@ namespace BiliGetter
             root.UpdateLayout();
 
             // 截图里带上「下载中」的示例数据，才能检查这一行的排布
-            w.FillDemoTransfer();
+            vm.FillDemoTransfer();
             root.UpdateLayout();
             System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
                 new Action(delegate { }), System.Windows.Threading.DispatcherPriority.ContextIdle);
@@ -271,6 +275,80 @@ namespace BiliGetter
             Tools.SavePng(rtb, outPath);
             Console.WriteLine("[ui] wrote " + outPath);
             w.Close();
+            return 0;
+        }
+
+        /// <summary>vmtest 用的对话框实现：只打印，不弹窗、不阻塞。</summary>
+        private sealed class HeadlessDialogs : IDialogService
+        {
+            public void Info(string text, string title)
+            {
+                Console.WriteLine("[dialog] " + title + ": " + (text ?? "").Replace("\r\n", " / "));
+            }
+            public string PickFolder(string initialDir) { return null; }
+            public string PickFile(string title, string exeName) { return null; }
+            public void OpenFolder(string path) { Console.WriteLine("[dialog] 打开目录: " + path); }
+            public void CopyText(string text) { }
+            public string PasteText() { return null; }
+            public bool ShowLogin(LoginViewModel vm)
+            {
+                Console.WriteLine("[dialog] 需要登录（vmtest 不弹窗）");
+                return false;
+            }
+            public bool ShowTools(ToolsViewModel vm)
+            {
+                Console.WriteLine("[dialog] 需要指定工具（vmtest 不弹窗）");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 不开窗口直接驱动 MainViewModel：解析 → 勾选 → 下载。
+        ///
+        /// 这是 MVVM 重构的收益点：界面逻辑脱离了 Window/控件，
+        /// 就能在命令行里当普通对象测。跑通说明 VM 与服务层的接线是好的。
+        /// </summary>
+        private static int CmdVmTest(string target, int maxItems)
+        {
+            Console.WriteLine("[vmtest] 无窗口驱动 MainViewModel");
+
+            HeadlessDialogs dialogs = new HeadlessDialogs();
+            IBiliService bili = new BiliService();
+            IDownloadService download = new DownloadService(bili);
+            IConfigService config = new ConfigService();
+            IToolLocator tools = new ToolLocator();
+
+            bili.LoadCookiesFrom(config.CookieFile);
+            try { bili.Init(); } catch { }
+            Console.WriteLine("[vmtest] login=" + bili.IsLogin + "  user=" + bili.UserName);
+
+            MainViewModel vm = new MainViewModel(bili, download, config, tools, dialogs, new QrImageFactory(), false);
+            vm.Initialize();
+            Console.WriteLine("[vmtest] " + vm.ToolText);
+
+            vm.Url = target;
+            vm.FetchAsync().GetAwaiter().GetResult();
+            Console.WriteLine("[vmtest] 解析结果: items=" + vm.Items.Count + "   " + vm.Summary);
+            if (vm.Items.Count > 0)
+                Console.WriteLine("[vmtest]   1. " + vm.Items[0].Title + "   默认选中=" + vm.Items[0].IsSelected);
+
+            if (maxItems > 0 && vm.Items.Count > 0)
+            {
+                vm.SelectNoneCommand.Execute(null);
+                int n = Math.Min(maxItems, vm.Items.Count);
+                for (int i = 0; i < n; i++) vm.Items[i].IsSelected = true;
+                Console.WriteLine("[vmtest] 开始下载前 " + n + " 项");
+                vm.DownloadAsync().GetAwaiter().GetResult();
+                Console.WriteLine("[vmtest] 下载结果: " + vm.Summary);
+                for (int i = 0; i < n; i++)
+                    Console.WriteLine("[vmtest]   " + vm.Items[i].Index + ". " + vm.Items[i].Status
+                        + "  " + vm.Items[i].Quality + "  " + vm.Items[i].Title);
+            }
+
+            string[] lines = (vm.LogText ?? "").Replace("\r\n", "\n").Split('\n');
+            int from = Math.Max(0, lines.Length - 10);
+            for (int i = from; i < lines.Length; i++)
+                if (lines[i].Trim().Length > 0) Console.WriteLine("[log] " + lines[i]);
             return 0;
         }
     }

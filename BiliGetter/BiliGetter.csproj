@@ -39,6 +39,15 @@
   </ItemGroup>
 
   <!--
+    MVVM 基础设施：[ObservableProperty] / [RelayCommand] 是源生成器，
+    编译期生成 INotifyPropertyChanged 与 ICommand，ViewModel 里不用手写样板。
+    打包进单文件后只多几十 KB。
+  -->
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+  </ItemGroup>
+
+  <!--
     XAML 放在 ..\src\，不在项目目录内，所以 SDK 的默认通配找不到，必须显式声明。
     Link 让 XAML 与 code-behind 保持同一个逻辑目录，x:Class 才能和 .xaml.cs 对上。
   -->
