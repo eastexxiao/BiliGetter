@@ -2,7 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="登录 B 站（手机扫码）" Width="440" Height="580"
-        ThemeMode="System" WindowStartupLocation="CenterOwner"
+        ThemeMode="Light" WindowStartupLocation="CenterOwner"
+        Foreground="#FF1A1A1A"
         ResizeMode="NoResize" FontFamily="Microsoft YaHei UI" FontSize="13">
 
     <Grid Margin="18">

@@ -140,7 +140,7 @@ namespace BiliGetter
             TxtTools.Text = text;
             TxtTools.ToolTip = text;
             TxtTools.Foreground = hasFfmpeg
-                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x8A, 0x8A, 0x8A))
+                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x6B, 0x6B, 0x6B))
                 : System.Windows.Media.Brushes.Firebrick;
 
             ChkAria2c.IsEnabled = hasAria2c;
