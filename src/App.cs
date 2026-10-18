@@ -289,6 +289,135 @@ namespace BiliGetter
         }
     }
 
+    /// <summary>
+    /// 「指定工具位置」对话框：让用户直接用文件对话框挑 ffmpeg / aria2c，
+    /// 而不是只能把文件放到程序目录里。启动检查失败时会自动弹出。
+    /// </summary>
+    internal sealed class ToolsDialog : Form
+    {
+        private readonly TextBox _txtFfmpeg;
+        private readonly TextBox _txtAria2c;
+
+        /// <summary>用户确认后的 ffmpeg 路径（必填）。</summary>
+        public string FfmpegPath;
+        /// <summary>用户确认后的 aria2c 路径（null 表示不指定，走单线程）。</summary>
+        public string Aria2cPath;
+
+        public ToolsDialog(string ffmpeg, string aria2c, bool startup)
+        {
+            Text = startup ? "启动检查：需要指定工具位置" : "工具路径";
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(680, 212);
+            Font = new Font("Microsoft YaHei UI", 9f);
+
+            Label hint = new Label();
+            hint.Location = new Point(12, 10);
+            hint.Size = new Size(656, 40);
+            hint.Text = startup
+                ? "启动检查没找到工具。ffmpeg 是必需的（合并音视频），aria2c 是可选的（多线程加速）。\r\n请点「浏览…」指定；也可以点「稍后」先去用，之后在右上角「工具路径…」里设置。"
+                : "ffmpeg 必需（合并音视频），aria2c 可选（多线程加速）。点「浏览…」选择。";
+            Controls.Add(hint);
+
+            Label l1 = new Label();
+            l1.Text = "ffmpeg:";
+            l1.Location = new Point(12, 66);
+            l1.Size = new Size(56, 22);
+            Controls.Add(l1);
+
+            _txtFfmpeg = new TextBox();
+            _txtFfmpeg.Location = new Point(74, 63);
+            _txtFfmpeg.Size = new Size(492, 23);
+            _txtFfmpeg.Text = ffmpeg ?? "";
+            Controls.Add(_txtFfmpeg);
+
+            Button pickF = new Button();
+            pickF.Text = "浏览…";
+            pickF.Location = new Point(576, 62);
+            pickF.Size = new Size(92, 26);
+            pickF.Click += delegate
+            {
+                string p = PickFile("ffmpeg");
+                if (p != null) _txtFfmpeg.Text = p;
+            };
+            Controls.Add(pickF);
+
+            Label l2 = new Label();
+            l2.Text = "aria2c:";
+            l2.Location = new Point(12, 102);
+            l2.Size = new Size(56, 22);
+            Controls.Add(l2);
+
+            _txtAria2c = new TextBox();
+            _txtAria2c.Location = new Point(74, 99);
+            _txtAria2c.Size = new Size(492, 23);
+            _txtAria2c.Text = aria2c ?? "";
+            Controls.Add(_txtAria2c);
+
+            Button pickA = new Button();
+            pickA.Text = "浏览…";
+            pickA.Location = new Point(576, 98);
+            pickA.Size = new Size(92, 26);
+            pickA.Click += delegate
+            {
+                string p = PickFile("aria2c");
+                if (p != null) _txtAria2c.Text = p;
+            };
+            Controls.Add(pickA);
+
+            Button ok = new Button();
+            ok.Text = "确定";
+            ok.Location = new Point(470, 162);
+            ok.Size = new Size(96, 32);
+            ok.Click += delegate
+            {
+                string f = _txtFfmpeg.Text.Trim();
+                string a = _txtAria2c.Text.Trim();
+                if (f.Length == 0)
+                {
+                    MessageBox.Show(this, "ffmpeg 是必需的，请指定它的位置。", "还差一步");
+                    return;
+                }
+                if (!File.Exists(f))
+                {
+                    MessageBox.Show(this, "这个 ffmpeg 路径不存在：\r\n" + f, "路径无效");
+                    return;
+                }
+                if (a.Length > 0 && !File.Exists(a))
+                {
+                    MessageBox.Show(this, "这个 aria2c 路径不存在：\r\n" + a, "路径无效");
+                    return;
+                }
+                FfmpegPath = f;
+                Aria2cPath = a.Length == 0 ? null : a;
+                DialogResult = DialogResult.OK;
+                Close();
+            };
+            Controls.Add(ok);
+
+            Button later = new Button();
+            later.Text = "稍后";
+            later.Location = new Point(572, 162);
+            later.Size = new Size(96, 32);
+            later.Click += delegate { DialogResult = DialogResult.Cancel; Close(); };
+            Controls.Add(later);
+        }
+
+        private static string PickFile(string name)
+        {
+            using (OpenFileDialog d = new OpenFileDialog())
+            {
+                d.Title = "选择 " + name + ".exe";
+                d.Filter = name + ".exe|" + name + ".exe|可执行文件 (*.exe)|*.exe|所有文件 (*.*)|*.*";
+                d.CheckFileExists = true;
+                if (d.ShowDialog() == DialogResult.OK) return d.FileName;
+            }
+            return null;
+        }
+    }
+
     // -------------------------------------------------------------------- main
     internal sealed class MainForm : Form
     {
@@ -306,6 +435,7 @@ namespace BiliGetter
         private ComboBox _cmbQuality;
         private CheckBox _chkAria2c;
         private Label _lblTools;
+        private Button _btnTools;
         private ListView _list;
         private Button _btnAll, _btnNone, _btnDownload, _btnStop;
         private ProgressBar _bar;
@@ -322,18 +452,67 @@ namespace BiliGetter
             _cookieFile = Path.Combine(Tools.BaseDir, "bili-cookies.txt");
             _configFile = Path.Combine(Tools.BaseDir, "bili-getter.ini");
             BuildUi();
-            _settings.FfmpegPath = Tools.FindFfmpeg();
-            _settings.Aria2cPath = Tools.FindAria2c();
-            LoadConfig();
 
-            string tools = "ffmpeg: " + (_settings.FfmpegPath == null ? "未找到！" : _settings.FfmpegPath);
-            tools += "    aria2c: " + (_settings.Aria2cPath == null ? "未找到（将单线程下载）" : _settings.Aria2cPath);
-            _lblTools.Text = tools;
-            _chkAria2c.Enabled = _settings.Aria2cPath != null;
-            if (_settings.Aria2cPath == null) _chkAria2c.Checked = false;
+            _settings.FfmpegPath = null;
+            _settings.Aria2cPath = null;
+            LoadConfig();          // 先读 ini 里手工指定的路径
+            ApplyToolSettings();   // 再兜底自动搜索，并刷新界面
 
-            Shown += delegate { RefreshAccount(); };
+            Shown += delegate
+            {
+                RefreshAccount();
+                EnsureTools();     // 启动检查：缺工具就弹对话框让用户直接指定
+            };
             FormClosing += delegate { SaveConfig(); };
+        }
+
+        /// <summary>
+        /// 决定 ffmpeg / aria2c 用哪个文件，并刷新界面提示。
+        /// 优先级：配置文件里手工指定的路径（且文件确实存在）→ 自动搜索。
+        /// 自动搜索见 Tools.Find：先找最近的同名文件，再找 Source\ 老布局，最后 PATH。
+        /// </summary>
+        private void ApplyToolSettings()
+        {
+            if (string.IsNullOrEmpty(_settings.FfmpegPath) || !File.Exists(_settings.FfmpegPath))
+                _settings.FfmpegPath = Tools.FindFfmpeg();
+            if (string.IsNullOrEmpty(_settings.Aria2cPath) || !File.Exists(_settings.Aria2cPath))
+                _settings.Aria2cPath = Tools.FindAria2c();
+
+            bool hasFfmpeg = !string.IsNullOrEmpty(_settings.FfmpegPath);
+            bool hasAria2c = !string.IsNullOrEmpty(_settings.Aria2cPath);
+
+            _lblTools.Text = "ffmpeg: "
+                + (hasFfmpeg ? _settings.FfmpegPath : "未找到 —— 必需，无法合并音视频（点右上「工具路径…」指定）")
+                + "     aria2c: "
+                + (hasAria2c ? _settings.Aria2cPath : "未找到（可选，缺了用单线程下载）");
+            _lblTools.ForeColor = hasFfmpeg ? Color.DimGray : Color.Firebrick;
+
+            _chkAria2c.Enabled = hasAria2c;
+            if (!hasAria2c) _chkAria2c.Checked = false;
+        }
+
+        /// <summary>启动检查：ffmpeg 必需、aria2c 可选；任一缺失就弹对话框。</summary>
+        private void EnsureTools()
+        {
+            if (!string.IsNullOrEmpty(_settings.FfmpegPath) && !string.IsNullOrEmpty(_settings.Aria2cPath))
+                return;
+            ShowToolsDialog(true);
+        }
+
+        /// <summary>打开「指定工具位置」对话框；确定后写回配置。</summary>
+        private void ShowToolsDialog(bool startup)
+        {
+            using (ToolsDialog d = new ToolsDialog(_settings.FfmpegPath, _settings.Aria2cPath, startup))
+            {
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                _settings.FfmpegPath = d.FfmpegPath;
+                _settings.Aria2cPath = d.Aria2cPath;
+                ApplyToolSettings();
+                SaveConfig();
+                Log("工具路径已更新：");
+                Log("  ffmpeg = " + (_settings.FfmpegPath ?? "(未指定)"));
+                Log("  aria2c = " + (_settings.Aria2cPath ?? "(未指定)"));
+            }
         }
 
         // ------------------------------------------------------------------- ui
@@ -500,6 +679,15 @@ namespace BiliGetter
             _chkAria2c.Size = new Size(180, 24);
             _chkAria2c.Checked = true;
             opt.Controls.Add(_chkAria2c);
+
+            // 随时可以手动指定 ffmpeg / aria2c 的位置（启动检查失败时也会自动弹）
+            _btnTools = new Button();
+            _btnTools.Text = "工具路径…";
+            _btnTools.Location = new Point(884, 2);
+            _btnTools.Size = new Size(100, 24);
+            _btnTools.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _btnTools.Click += delegate { ShowToolsDialog(false); };
+            opt.Controls.Add(_btnTools);
 
             _list = new ListView();
             _list.Dock = DockStyle.Fill;
@@ -763,8 +951,13 @@ namespace BiliGetter
             if (_items.Count == 0) { MessageBox.Show(this, "请先点「解析」，确认列表后再下载。", "提示"); return; }
             if (string.IsNullOrEmpty(_settings.FfmpegPath))
             {
-                MessageBox.Show(this, "找不到 ffmpeg.exe，无法合并音视频。\r\n请把 ffmpeg.exe 放到本程序目录，或保持它在 Source\\ffmpeg\\ 下。", "缺少 ffmpeg");
-                return;
+                // 直接弹「指定工具位置」对话框，而不是只丢一句错误
+                ShowToolsDialog(true);
+                if (string.IsNullOrEmpty(_settings.FfmpegPath))
+                {
+                    Log("未指定 ffmpeg，已取消下载。");
+                    return;
+                }
             }
             var sel = new List<DownloadItem>();
             for (int i = 0; i < _list.Items.Count; i++)
@@ -874,6 +1067,8 @@ namespace BiliGetter
                         if (k == "out") outDir = v;
                         else if (k == "quality") { int q; if (int.TryParse(v, out q)) quality = q; }
                         else if (k == "aria2c") aria = v == "1";
+                        else if (k == "ffmpeg_path") _settings.FfmpegPath = v.Length > 0 ? v : null;
+                        else if (k == "aria2c_path") _settings.Aria2cPath = v.Length > 0 ? v : null;
                     }
                 }
             }
@@ -890,7 +1085,9 @@ namespace BiliGetter
                 File.WriteAllText(_configFile,
                     "out=" + _txtOut.Text.Trim() + "\r\n"
                     + "quality=" + _cmbQuality.SelectedIndex + "\r\n"
-                    + "aria2c=" + (_chkAria2c.Checked ? "1" : "0") + "\r\n",
+                    + "aria2c=" + (_chkAria2c.Checked ? "1" : "0") + "\r\n"
+                    + "ffmpeg_path=" + (_settings.FfmpegPath ?? "") + "\r\n"
+                    + "aria2c_path=" + (_settings.Aria2cPath ?? "") + "\r\n",
                     new System.Text.UTF8Encoding(false));
             }
             catch { }

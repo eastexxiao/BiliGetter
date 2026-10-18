@@ -117,7 +117,13 @@ namespace BiliGetter
                 string msg = Json.Str(r, "message");
                 if (code == -352) msg = "触发 B 站风控（-352 风控校验失败），需要完整浏览器 Cookie";
                 else if (code == -101) msg = "账号未登录";
-                else if (code == -403) msg = "签名校验失败";
+                else if (code == -403)
+                {
+                    // -403 的含义是「没有观看权限」，不是签名算错。
+                    msg = "没有观看权限（-403）：付费内容未购买 / 大会员专享 / 有权限或地域限制";
+                    if (what != null && what.IndexOf("课程") >= 0)
+                        msg += "。若这是付费课程，需要先购买该课程（或在有效期内）才能下载";
+                }
                 throw new BiliException((int)code, what + "失败: " + code + " " + msg);
             }
             return r;
