@@ -288,9 +288,31 @@ namespace BiliGetter
         }
 
         /// Returns true when the file is present (downloaded or already there).
+        /// <summary>
+        /// 下载一项。失败时重新取一次播放地址再试一遍 —— B 站 CDN 的镜像地址
+        /// 偶尔直接 404（实测同一个视频 3 次里有 1 次），重取就能拿到可用地址。
+        /// </summary>
         public bool DownloadOne(BiliSession s, DownloadItem it, Action<int> pct)
         {
+            try
+            {
+                return DownloadOneAttempt(s, it, pct);
+            }
+            catch (Exception)
+            {
+                if (Cancelled) throw;
+                Note("    本次失败，重新获取播放地址后重试一次…");
+                return DownloadOneAttempt(s, it, pct);
+            }
+        }
+
+        private bool DownloadOneAttempt(BiliSession s, DownloadItem it, Action<int> pct)
+        {
             if (Cancelled) return false;
+
+            // 输出目录能不能写文件，要在花掉网络请求之前就说清楚。
+            // （受控文件夹访问 / 杀软 / 权限这类问题会一直存在，重试也没用。）
+            EnsureOutDirWritable();
 
             if (string.IsNullOrEmpty(it.Cid))
             {
@@ -346,6 +368,16 @@ namespace BiliGetter
                 FetchTo(picked.VideoUrl, vf, it.Referer, pct);
                 bool hasAudio = !string.IsNullOrEmpty(picked.AudioUrl);
                 if (hasAudio) FetchTo(picked.AudioUrl, af, it.Referer, null);
+
+                // 分片没落盘就别再叫 ffmpeg 了：那只会得到 "No such file or directory"，
+                // 把真正的原因（下载阶段就已经失败）盖掉。
+                if (!File.Exists(vf) || new FileInfo(vf).Length == 0)
+                    throw new Exception("视频分片没有下载成功（临时文件不存在或为空），"
+                        + "失败发生在下载阶段，详见上面的报错");
+                if (hasAudio && (!File.Exists(af) || new FileInfo(af).Length == 0))
+                    throw new Exception("音频分片没有下载成功（临时文件不存在或为空），"
+                        + "失败发生在下载阶段，详见上面的报错");
+
                 Merge(vf, hasAudio ? af : null, outFile);
                 merged = true;
                 double mb = new FileInfo(outFile).Length / 1048576.0;
@@ -368,8 +400,47 @@ namespace BiliGetter
                 }
                 else if (Directory.Exists(tmp))
                 {
-                    Note("    （已保留下载好的临时分片，稍后可重试：" + tmp + "）");
+                    Note("    （临时分片已保留，便于排查问题：" + tmp + "）");
                 }
+            }
+        }
+
+        /// <summary>
+        /// 开下之前先确认输出目录真的能「写文件」。
+        ///
+        /// 有些机器上存在这种状态：能创建子目录，但创建文件被拒（Win32 错误 5
+        /// Access is denied）——典型来源是 Windows Defender 的「受控文件夹访问」
+        /// （勒索软件防护）、第三方杀毒的文件防护、或者该目录的权限不含写文件。
+        /// 这种问题要下到一半才炸，报出来的又是 ffmpeg 的 "Permission denied"，
+        /// 极难判断。先探一次，直接把结论和解决办法说清楚。
+        /// </summary>
+        private void EnsureOutDirWritable()
+        {
+            try
+            {
+                Directory.CreateDirectory(Settings.OutDir);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("无法创建输出目录：" + Settings.OutDir + "\r\n    " + ex.Message);
+            }
+
+            string probe = Path.Combine(Settings.OutDir, ".biliget-write-test.tmp");
+            try
+            {
+                File.WriteAllText(probe, "ok");
+                File.Delete(probe);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("输出目录无法写入文件：" + Settings.OutDir
+                    + "\r\n    " + ex.Message
+                    + "\r\n    这不是下载或合并的问题，是系统不让在这个目录里建文件。常见原因："
+                    + "\r\n      · Windows Defender「受控文件夹访问」（勒索软件防护）拦截了这个程序"
+                    + "\r\n      · 第三方杀毒软件的文件防护"
+                    + "\r\n      · 该文件夹的权限不允许当前用户写文件"
+                    + "\r\n    办法：换一个输出目录（例如自己新建 D:\\bili-dl），"
+                    + "\r\n    或在「受控文件夹访问」里把本程序加入允许列表。");
             }
         }
 
@@ -525,7 +596,7 @@ namespace BiliGetter
                 + (outp.Length > 0 ? ": " + Tail(outp) : "")
                 + "\r\n    常见原因：目标文件正被播放器占用、杀毒软件正在扫描，"
                 + "\r\n    或者同一门课开了两个窗口在同时下载。"
-                + "\r\n    下载好的分片已保留，排除占用后再点一次下载即可，不必重新下载。");
+                + "\r\n    排除占用后重试即可（分片会重新下载）。");
         }
 
         private static string Tail(string s)
