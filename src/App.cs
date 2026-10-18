@@ -146,6 +146,47 @@ namespace BiliGetter
         }
 
         /// <summary>
+        /// 解析 ini / 输入框里给出的路径：相对路径一律相对「程序所在目录」，
+        /// 而不是当前工作目录。这样整个文件夹搬到 U 盘或别的磁盘，
+        /// 配置里写
+        ///     out=downloads
+        ///     ffmpeg_path=ffmpeg.exe
+        /// 仍然有效；写绝对路径也照旧能用。
+        /// </summary>
+        public static string Resolve(string stored)
+        {
+            if (string.IsNullOrEmpty(stored)) return "";
+            stored = stored.Trim();
+            if (stored.Length == 0) return "";
+            try
+            {
+                if (Path.IsPathRooted(stored)) return Path.GetFullPath(stored);
+                return Path.GetFullPath(Path.Combine(BaseDir, stored));
+            }
+            catch { return stored; }
+        }
+
+        /// <summary>
+        /// 把绝对路径转成适合写进 ini 的形式：在程序目录内就只存相对路径，
+        /// 这样文件夹搬走以后 ini 不会还指着旧位置；程序目录外仍存绝对路径。
+        /// </summary>
+        public static string Storable(string full)
+        {
+            if (string.IsNullOrEmpty(full)) return "";
+            string f, b;
+            try
+            {
+                f = Path.GetFullPath(full.Trim());
+                b = Path.GetFullPath(BaseDir);
+            }
+            catch { return full; }
+
+            if (!b.EndsWith("\\", StringComparison.Ordinal)) b += "\\";
+            if (f.StartsWith(b, StringComparison.OrdinalIgnoreCase)) return f.Substring(b.Length);
+            return f;
+        }
+
+        /// <summary>
         /// 把二维码矩阵画成 WPF 位图。
         /// 用 Bgra32 直接填像素，替代原来的 System.Drawing.Bitmap + Graphics ——
         /// WPF 版不需要再引 System.Drawing，单文件体积和依赖都更干净。

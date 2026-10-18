@@ -126,6 +126,10 @@ namespace BiliGetter
         // ---------------------------------------------------------------- 工具
         private void ApplyToolSettings()
         {
+            // ini / 对话框里给的可能相对路径：统一按程序目录解析，不依赖当前工作目录
+            _settings.FfmpegPath = Tools.Resolve(_settings.FfmpegPath);
+            _settings.Aria2cPath = Tools.Resolve(_settings.Aria2cPath);
+
             if (string.IsNullOrEmpty(_settings.FfmpegPath) || !File.Exists(_settings.FfmpegPath))
                 _settings.FfmpegPath = Tools.FindFfmpeg();
             if (string.IsNullOrEmpty(_settings.Aria2cPath) || !File.Exists(_settings.Aria2cPath))
@@ -209,7 +213,7 @@ namespace BiliGetter
         {
             try
             {
-                string p = TxtOut.Text.Trim();
+                string p = Tools.Resolve(TxtOut.Text);
                 Directory.CreateDirectory(p);
                 Tools.OpenUrl(p);
             }
@@ -230,7 +234,9 @@ namespace BiliGetter
             if (TxtOut.Text.Trim().Length == 0)
                 TxtOut.Text = Path.Combine(Tools.BaseDir, "downloads");
 
-            _settings.OutDir = TxtOut.Text.Trim();
+            // 相对路径按程序目录解析（保持便携），并把解析结果回显到输入框
+            _settings.OutDir = Tools.Resolve(TxtOut.Text);
+            TxtOut.Text = _settings.OutDir;
             _settings.QualityCap = Quality.CapForIndex(CmbQuality.SelectedIndex);
             _settings.UseAria2c = ChkAria2c.IsChecked == true;
 
@@ -377,7 +383,8 @@ namespace BiliGetter
                 return;
             }
 
-            _settings.OutDir = TxtOut.Text.Trim();
+            _settings.OutDir = Tools.Resolve(TxtOut.Text);
+            TxtOut.Text = _settings.OutDir;
             _settings.QualityCap = Quality.CapForIndex(CmbQuality.SelectedIndex);
             _settings.UseAria2c = ChkAria2c.IsChecked == true && _settings.Aria2cPath != null;
             try { Directory.CreateDirectory(_settings.OutDir); }
@@ -535,11 +542,11 @@ namespace BiliGetter
                         if (eq < 1) continue;
                         string k = line.Substring(0, eq).Trim();
                         string v = line.Substring(eq + 1).Trim();
-                        if (k == "out") outDir = v;
+                        if (k == "out") outDir = Tools.Resolve(v);
                         else if (k == "quality") { int q; if (int.TryParse(v, out q)) quality = q; }
                         else if (k == "aria2c") aria = v == "1";
-                        else if (k == "ffmpeg_path") _settings.FfmpegPath = v.Length > 0 ? v : null;
-                        else if (k == "aria2c_path") _settings.Aria2cPath = v.Length > 0 ? v : null;
+                        else if (k == "ffmpeg_path") _settings.FfmpegPath = v.Length > 0 ? Tools.Resolve(v) : null;
+                        else if (k == "aria2c_path") _settings.Aria2cPath = v.Length > 0 ? Tools.Resolve(v) : null;
                     }
                 }
             }
@@ -555,11 +562,11 @@ namespace BiliGetter
             try
             {
                 File.WriteAllText(_configFile,
-                    "out=" + TxtOut.Text.Trim() + "\r\n"
+                    "out=" + Tools.Storable(TxtOut.Text) + "\r\n"
                     + "quality=" + CmbQuality.SelectedIndex + "\r\n"
                     + "aria2c=" + (ChkAria2c.IsChecked == true ? "1" : "0") + "\r\n"
-                    + "ffmpeg_path=" + (_settings.FfmpegPath ?? "") + "\r\n"
-                    + "aria2c_path=" + (_settings.Aria2cPath ?? "") + "\r\n",
+                    + "ffmpeg_path=" + Tools.Storable(_settings.FfmpegPath) + "\r\n"
+                    + "aria2c_path=" + Tools.Storable(_settings.Aria2cPath) + "\r\n",
                     new System.Text.UTF8Encoding(false));
             }
             catch { }

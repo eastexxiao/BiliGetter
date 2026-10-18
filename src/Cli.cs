@@ -127,8 +127,10 @@ namespace BiliGetter
                     if (eq < 1) continue;
                     string k = line.Substring(0, eq).Trim();
                     string v = line.Substring(eq + 1).Trim();
-                    if (k == "ffmpeg_path" && v.Length > 0 && File.Exists(v)) ds.FfmpegPath = v;
-                    else if (k == "aria2c_path" && v.Length > 0 && File.Exists(v)) ds.Aria2cPath = v;
+                    // ini 里可能是相对路径：按程序目录解析，不要依赖当前工作目录
+                    string full = Tools.Resolve(v);
+                    if (k == "ffmpeg_path" && full.Length > 0 && File.Exists(full)) ds.FfmpegPath = full;
+                    else if (k == "aria2c_path" && full.Length > 0 && File.Exists(full)) ds.Aria2cPath = full;
                     else if (k == "aria2c") ds.UseAria2c = (v == "1") && ds.Aria2cPath != null;
                 }
             }

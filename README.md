@@ -112,6 +112,32 @@ BiliGetter\bin\Release\net10.0-windows\win-x64\publish\BiliGetter.exe
 程序会先找最近的同名 `ffmpeg.exe`（向上 8 层），所以从 `publish\` 目录直接 F5
 也能用到便携版的那一份。
 
+## 便携性：相对路径与整体搬移
+
+整个文件夹可以整体搬到 U 盘或别的机器，不改任何配置。规则只有一条：
+
+**ini 里的相对路径，一律相对「BiliGetter.exe 所在目录」解析，与当前工作目录无关。**
+
+所以下面这份配置搬到哪都有效：
+
+    out=downloads
+    ffmpeg_path=ffmpeg.exe
+    aria2c_path=bin\aria2c.exe
+
+反过来，程序保存配置时会**优先写相对路径**：凡是位于程序目录内的路径
+（输出目录、两个工具），ini 里都存成相对形式；只有位于程序目录之外的
+才存绝对路径（那种情况本来就不可搬移）。
+
+实测过的四点：
+
+1. 干净目录首次运行，写出的 ini 就是 `out=downloads`；
+2. 把 ffmpeg / aria2c 放进 `bin\`（这样自动查找是找不到的），ini 只写
+   `bin\ffmpeg.exe` 仍能正常下载并合并；
+3. 把整个文件夹改名搬走，相对路径自动指向新位置，不需要重新指定；
+4. 故意换一个工作目录启动，`out=downloads` 不会被改写成绝对路径。
+
+工具查找顺序（未变）：程序目录 → 逐级向上最多 8 层 → 历史 `Source\` 布局 → PATH。
+因此**只要把 ffmpeg.exe / aria2c.exe 和 BiliGetter.exe 放在一起**，ini 里连这两项都不用写。
 ## 注意
 
 - `bin\`、`obj\` 是构建产物，已在 `.gitignore` 里；打包便携版时可排除。
