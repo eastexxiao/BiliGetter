@@ -13,12 +13,51 @@ namespace BiliGetter
 {
     internal static class Program
     {
+        /// <summary>
+        /// 单一入口：带 --cli（或直接给出已知子命令）走命令行，否则启动图形界面。
+        ///
+        /// 输出类型是 WinExe（双击不弹黑框），所以命令行模式必须先挂到
+        /// 父进程的控制台上，否则 Console.WriteLine 会全部丢失。
+        /// </summary>
         [STAThread]
-        private static void Main()
+        private static int Main(string[] args)
         {
+            if (IsCliInvocation(args))
+            {
+                ConsoleBridge.Attach();
+                try { return Cli.Run(StripCliSwitch(args)); }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine("FATAL: " + ex.GetType().Name + ": " + ex.Message);
+                    return 1;
+                }
+            }
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MainForm());
+            return 0;
+        }
+
+        /// <summary>第一个参数是 --cli，或本身就是已知子命令时，走命令行模式。</summary>
+        private static bool IsCliInvocation(string[] args)
+        {
+            if (args == null || args.Length == 0) return false;
+            string a = args[0].TrimStart('-').ToLowerInvariant();
+            if (a == "cli" || a == "help" || a == "?") return true;
+            return Array.IndexOf(Cli.Commands, a) >= 0;
+        }
+
+        /// <summary>去掉开头的 --cli，剩下的才是真正的子命令与参数。</summary>
+        private static string[] StripCliSwitch(string[] args)
+        {
+            if (args.Length > 0 && args[0].TrimStart('-').ToLowerInvariant() == "cli")
+            {
+                string[] rest = new string[args.Length - 1];
+                Array.Copy(args, 1, rest, 0, rest.Length);
+                return rest;
+            }
+            return args;
         }
     }
 
@@ -31,8 +70,9 @@ namespace BiliGetter
         ///
         /// The search is deliberately two-pass so that the *nearest* plain copy
         /// always wins:
-        ///   1. a bare "ffmpeg.exe", starting beside the exe and walking up to 6
-        ///      parents (6 covers Visual Studio's bin\Release\net48\ layout);
+        ///   1. a bare "ffmpeg.exe", starting beside the exe and walking up to 8
+        ///      parents — enough to climb out of every build layout we produce,
+        ///      including bin\Release\net10.0-windows\win-x64\publish\;
         ///   2. only if that fails, the historical Source\-style layouts
         ///      (Source\ffmpeg\, ..\Source\ffmpeg\, ..\..\Source\ffmpeg\);
         ///   3. finally PATH.
@@ -43,11 +83,12 @@ namespace BiliGetter
         /// </summary>
         public static string Find(string exeName, string[] relative)
         {
+            const int MaxParentLevels = 8;
             string baseDir = BaseDir;
 
             // Pass 1: the plain file name, nearest directory first.
             DirectoryInfo dir = new DirectoryInfo(baseDir);
-            for (int up = 0; up < 6 && dir != null; up++)
+            for (int up = 0; up < MaxParentLevels && dir != null; up++)
             {
                 string p = Path.Combine(dir.FullName, exeName);
                 if (File.Exists(p)) return p;
@@ -56,7 +97,7 @@ namespace BiliGetter
 
             // Pass 2: the legacy Source\... layouts.
             dir = new DirectoryInfo(baseDir);
-            for (int up = 0; up < 6 && dir != null; up++)
+            for (int up = 0; up < MaxParentLevels && dir != null; up++)
             {
                 for (int i = 0; i < relative.Length; i++)
                 {

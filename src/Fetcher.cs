@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Text;
 
 namespace BiliGetter
@@ -382,28 +383,31 @@ namespace BiliGetter
                 return;
             }
 
-            HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
-            req.Method = "GET";
-            req.UserAgent = Settings.UserAgent;
-            req.Referer = referer;
-            req.Headers["Origin"] = "https://www.bilibili.com";
-            req.Timeout = 60000;
-            req.ReadWriteTimeout = 120000;
-            req.KeepAlive = false;
-            using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
-            using (Stream st = resp.GetResponseStream())
-            using (FileStream fs = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None, 131072))
+            using (HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Get, url))
             {
-                byte[] buf = new byte[131072];
-                long total = resp.ContentLength;
-                long done = 0;
-                int n;
-                while ((n = st.Read(buf, 0, buf.Length)) > 0)
+                req.Headers.TryAddWithoutValidation("Referer", referer);
+                req.Headers.TryAddWithoutValidation("Origin", "https://www.bilibili.com");
+                req.Headers.TryAddWithoutValidation("User-Agent", Settings.UserAgent);
+
+                // ResponseHeadersRead：拿到响应头就开始写文件，不把整个视频先读进内存。
+                using (HttpResponseMessage resp = MediaClient.Instance.Send(req, HttpCompletionOption.ResponseHeadersRead))
                 {
-                    if (Cancelled) return;
-                    fs.Write(buf, 0, n);
-                    done += n;
-                    if (pct != null && total > 0) pct((int)(done * 100 / total));
+                    resp.EnsureSuccessStatusCode();
+                    long total = resp.Content.Headers.ContentLength ?? -1L;
+                    using (Stream st = resp.Content.ReadAsStream())
+                    using (FileStream fs = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None, 131072))
+                    {
+                        byte[] buf = new byte[131072];
+                        long done = 0;
+                        int n;
+                        while ((n = st.Read(buf, 0, buf.Length)) > 0)
+                        {
+                            if (Cancelled) return;
+                            fs.Write(buf, 0, n);
+                            done += n;
+                            if (pct != null && total > 0) pct((int)(done * 100 / total));
+                        }
+                    }
                 }
             }
             if (pct != null) pct(100);

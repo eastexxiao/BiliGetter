@@ -1,16 +1,16 @@
 <Project>
 
-  <!-- Settings shared by both projects. -->
+  <!-- 本解决方案共用的编译设置（当前只有一个项目） -->
   <PropertyGroup>
-    <!-- The code is plain C# 7.3 / .NET Framework, so keep the language level
-         explicit rather than depending on SDK defaults. -->
-    <LangVersion>7.3</LangVersion>
+    <!-- 目标是最新的 .NET，C# 也用最新语言版本（代码本身仍写成兼容老语法的样式） -->
+    <LangVersion>latest</LangVersion>
+    <!-- 关掉可空引用类型和隐式 using：现有代码全部显式 using，保持行为一致 -->
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <Deterministic>true</Deterministic>
     <NeutralLanguage>zh-CN</NeutralLanguage>
-    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- 只保留英文附属资源，避免输出目录里塞一堆语言包 -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 

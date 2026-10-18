@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -31,38 +32,55 @@ namespace BiliGetter
             37,48,7,16,24,55,40,61,26,17,0,1,60,51,30,4,22,25,54,21,56,59,6,63,57,62,11,36,20,34,44,52
         };
 
-        static BiliSession()
+        /// <summary>
+        /// 整个会话共用一个 HttpClient：连接复用、Cookie 由 handler 统一管理。
+        /// 用 SocketsHttpHandler 而非默认 handler，是为了显式控制连接池与解压行为。
+        /// .NET 10 上 TLS 版本由系统协商，不再需要 ServicePointManager。
+        /// </summary>
+        private readonly HttpClient _http;
+
+        public BiliSession()
         {
-            try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; }
-            catch { }
-            try { ServicePointManager.DefaultConnectionLimit = 16; } catch { }
+            SocketsHttpHandler handler = new SocketsHttpHandler();
+            handler.CookieContainer = Cookies;
+            handler.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+            handler.ConnectTimeout = TimeSpan.FromSeconds(15);
+            handler.MaxConnectionsPerServer = 16;
+            handler.PooledConnectionLifetime = TimeSpan.FromMinutes(5);
+            handler.AllowAutoRedirect = true;
+
+            _http = new HttpClient(handler);
+            _http.Timeout = TimeSpan.FromSeconds(30);
+            _http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
+            _http.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json, text/plain, */*");
+            _http.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "zh-CN,zh;q=0.9");
         }
 
         // ------------------------------------------------------------------ http
         private string GetTextOnce(string url, string referer)
         {
-            HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
-            req.Method = "GET";
-            req.UserAgent = UserAgent;
-            req.Referer = referer;
-            req.Accept = "application/json, text/plain, */*";
-            req.Headers["Accept-Language"] = "zh-CN,zh;q=0.9";
-            req.Headers["Origin"] = "https://www.bilibili.com";
-            req.CookieContainer = Cookies;
-            req.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
-            req.Timeout = 30000;
-            req.ReadWriteTimeout = 30000;
-            req.KeepAlive = false;
-            using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
-            using (Stream st = resp.GetResponseStream())
-            using (MemoryStream ms = new MemoryStream())
+            using (HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Get, url))
             {
-                byte[] buf = new byte[16384];
-                int n;
-                while ((n = st.Read(buf, 0, buf.Length)) > 0) ms.Write(buf, 0, n);
-                // Force UTF-8: bilibili's pugv endpoints omit the charset, and
-                // .NET would otherwise fall back to Latin-1 and mangle Chinese.
-                return Encoding.UTF8.GetString(ms.ToArray());
+                if (!string.IsNullOrEmpty(referer))
+                    req.Headers.TryAddWithoutValidation("Referer", referer);
+                req.Headers.TryAddWithoutValidation("Origin", "https://www.bilibili.com");
+
+                // Send() 是同步 API（.NET 5+）：本程序的调用点大多在后台线程上同步执行，
+                // 用它比 async/await 更简单，也不会在 UI 线程上死锁。
+                using (HttpResponseMessage resp = _http.Send(req))
+                {
+                    resp.EnsureSuccessStatusCode();
+                    // HttpContent 没有同步的 ReadAsByteArray()，只有异步版本；
+                    // 这里用同步的 ReadAsStream() 自己拷到 MemoryStream，保持全同步。
+                    using (Stream st = resp.Content.ReadAsStream())
+                    using (MemoryStream ms = new MemoryStream())
+                    {
+                        st.CopyTo(ms);
+                        // Force UTF-8: bilibili's pugv endpoints omit the charset, and
+                        // decoding by the declared charset would mangle Chinese.
+                        return Encoding.UTF8.GetString(ms.ToArray());
+                    }
+                }
             }
         }
 

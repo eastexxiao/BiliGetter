@@ -1,5 +1,5 @@
-// Console harness used to verify the non-GUI core against the live API.
-// Compiled from the same sources as the GUI but with /main:BiliGetter.CliTest.
+// 命令行模式：由 Program.Main 在带 --cli 参数（或直接给出子命令）时调用。
+// 与图形界面共用同一套核心代码（BiliApi / Fetcher / Downloader）。
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -9,10 +9,14 @@ using System.Windows.Forms;
 
 namespace BiliGetter
 {
-    internal static class CliTest
+    internal static class Cli
     {
-        [STAThread]
-        private static int Main(string[] args)
+        /// <summary>支持的子命令（程序入口据此判断是否进入命令行模式）。</summary>
+        public static readonly string[] Commands = new string[] {
+            "tools", "list", "dl", "poll", "qr", "ui"
+        };
+
+        public static int Run(string[] args)
         {
             string cmd = args.Length > 0 ? args[0] : "help";
             // "ui" and "tools" need no network, so handle them first.
