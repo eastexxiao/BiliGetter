@@ -513,7 +513,24 @@ namespace BiliGetter
                     || s.IndexOf("[ERROR]", StringComparison.OrdinalIgnoreCase) >= 0;
                 if (interesting) picked.Add(s);
             }
-            if (picked.Count > 0) return string.Join(" | ", picked.ToArray());
+            if (picked.Count > 0)
+            {
+                string joined = string.Join(" | ", picked.ToArray());
+                // 这种组合很有辨识度：本程序自己写这个目录没问题（预检能过），
+                // 但 aria2c / ffmpeg 作为独立进程写不进去。最常见的原因是
+                // Windows「受控文件夹访问」只给 BiliGetter.exe 放行了一次。
+                if (joined.IndexOf("Access is denied", StringComparison.OrdinalIgnoreCase) >= 0
+                    || joined.IndexOf("errNum=5", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    joined += "\r\n    → 本程序自己往这个目录写文件是成功的，但 aria2c 写不进去。"
+                        + "\r\n      典型原因：Windows「受控文件夹访问」只放行了 BiliGetter.exe，"
+                        + "\r\n      没有放行 aria2c.exe / ffmpeg.exe。"
+                        + "\r\n      解决一：Windows 安全中心 → 病毒和威胁防护 → 勒索软件防护 →"
+                        + "\r\n              受控文件夹访问 → 允许应用通过，把 aria2c.exe 和 ffmpeg.exe 加进去。"
+                        + "\r\n      解决二：把输出目录换到不受保护的路径（例如 D:\\bili-dl）。";
+                }
+                return joined;
+            }
 
             // 兜底：没有可识别的行，就取最前面几行非空内容
             var head = new List<string>();
