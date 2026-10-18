@@ -337,6 +337,7 @@ namespace BiliGetter
             string tmpRoot = Path.Combine(Settings.OutDir, ".biliget-tmp");
             string tmp = Path.Combine(tmpRoot, Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tmp);
+            bool merged = false;
             try
             {
                 string vf = Path.Combine(tmp, "v.m4s");
@@ -346,43 +347,116 @@ namespace BiliGetter
                 bool hasAudio = !string.IsNullOrEmpty(picked.AudioUrl);
                 if (hasAudio) FetchTo(picked.AudioUrl, af, it.Referer, null);
                 Merge(vf, hasAudio ? af : null, outFile);
+                merged = true;
                 double mb = new FileInfo(outFile).Length / 1048576.0;
                 Note("  ✓ 完成 " + it.Title + ".mp4  (" + mb.ToString("0.00") + " MB)");
                 return true;
             }
             finally
             {
-                try { Directory.Delete(tmp, true); } catch { }
-                try
+                // 只有合并成功才清理临时目录。失败时里面是已经下好的 v.m4s / a.m4s
+                // （4K 单个分片就上百 MB），删掉的话整段都得重新下载。
+                if (merged)
                 {
-                    if (Directory.Exists(tmpRoot) && Directory.GetFileSystemEntries(tmpRoot).Length == 0)
-                        Directory.Delete(tmpRoot);
+                    try { Directory.Delete(tmp, true); } catch { }
+                    try
+                    {
+                        if (Directory.Exists(tmpRoot) && Directory.GetFileSystemEntries(tmpRoot).Length == 0)
+                            Directory.Delete(tmpRoot);
+                    }
+                    catch { }
                 }
-                catch { }
+                else if (Directory.Exists(tmp))
+                {
+                    Note("    （已保留下载好的临时分片，稍后可重试：" + tmp + "）");
+                }
             }
         }
 
         private void FetchTo(string url, string dest, string referer, Action<int> pct)
         {
             if (Cancelled) return;
+
             if (Settings.UseAria2c && !string.IsNullOrEmpty(Settings.Aria2cPath))
             {
-                string dir = Path.GetDirectoryName(dest);
-                string name = Path.GetFileName(dest);
-                string args = "-x16 -s16 -j16 -k 5M --allow-overwrite=true --auto-file-renaming=false"
-                    + " --console-log-level=warn --summary-interval=0"
-                    + " --header=" + Util.Quote("Referer: " + referer)
-                    + " --header=" + Util.Quote("User-Agent: " + Settings.UserAgent)
-                    + " -d " + Util.Quote(dir) + " -o " + Util.Quote(name) + " " + Util.Quote(url);
-                string outp;
-                int code = Util.Run(Settings.Aria2cPath, args, out outp, delegate (Process p) { _current = p; });
-                _current = null;
-                if (code != 0 || !File.Exists(dest))
-                    throw new Exception("aria2c 下载失败 (exit " + code + ")" + (outp.Length > 0 ? ": " + Tail(outp) : ""));
-                if (pct != null) pct(100);
-                return;
+                try
+                {
+                    FetchWithAria2c(url, dest, referer, pct);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    if (Cancelled) return;
+                    // aria2c 失败（CDN 403、连接数被限、网络抖动等）不让整个任务失败：
+                    // 换内置下载器再试一次，它只用一个连接、走的请求头和界面版完全一致。
+                    Note("    aria2c 失败，改用内置下载器重试：" + ex.Message);
+                    try { if (File.Exists(dest)) File.Delete(dest); } catch { }
+                }
             }
 
+            FetchWithHttp(url, dest, referer, pct);
+        }
+
+        /// <summary>用 aria2c 多线程下载；失败时抛异常，由 FetchTo 决定是否回退。</summary>
+        private void FetchWithAria2c(string url, string dest, string referer, Action<int> pct)
+        {
+            string dir = Path.GetDirectoryName(dest);
+            string name = Path.GetFileName(dest);
+            string args = "-x16 -s16 -j16 -k 5M --allow-overwrite=true --auto-file-renaming=false"
+                + " --max-tries=3 --retry-wait=2 --timeout=30 --connect-timeout=15"
+                + " --console-log-level=warn --summary-interval=0"
+                + " --header=" + Util.Quote("Referer: " + referer)
+                + " --header=" + Util.Quote("Origin: https://www.bilibili.com")
+                + " --header=" + Util.Quote("User-Agent: " + Settings.UserAgent)
+                + " -d " + Util.Quote(dir) + " -o " + Util.Quote(name) + " " + Util.Quote(url);
+            string outp;
+            int code = Util.Run(Settings.Aria2cPath, args, out outp, delegate (Process p) { _current = p; });
+            _current = null;
+            if (code != 0 || !File.Exists(dest))
+                throw new Exception("exit " + code + (outp.Length > 0 ? "，" + Aria2cReason(outp) : ""));
+            if (pct != null) pct(100);
+        }
+
+        /// <summary>
+        /// 挑出 aria2c 真正的原因行。
+        ///
+        /// aria2c 的失败信息长这样，夹在输出中间：
+        ///     [ERROR] CUID#7 - Download aborted. URI=https://...
+        ///     Exception: [AbstractCommand.cc:351] errorCode=22 URI=https://...
+        ///       -> [HttpSkipResponseCommand.cc:240] errorCode=22 The response status is not successful. status=403
+        /// 末尾才是 "Status Legend:"。所以直接取输出尾部只会拿到那句没用的图例。
+        /// </summary>
+        private static string Aria2cReason(string output)
+        {
+            string[] lines = output.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+
+            var picked = new List<string>();
+            for (int i = 0; i < lines.Length && picked.Count < 3; i++)
+            {
+                string s = lines[i].Trim();
+                if (s.Length == 0) continue;
+                if (s.IndexOf("Status Legend", StringComparison.OrdinalIgnoreCase) >= 0) break;
+                bool interesting = s.IndexOf("Exception", StringComparison.OrdinalIgnoreCase) >= 0
+                    || s.IndexOf("errorCode", StringComparison.OrdinalIgnoreCase) >= 0
+                    || s.IndexOf("status=", StringComparison.OrdinalIgnoreCase) >= 0
+                    || s.IndexOf("[ERROR]", StringComparison.OrdinalIgnoreCase) >= 0;
+                if (interesting) picked.Add(s);
+            }
+            if (picked.Count > 0) return string.Join(" | ", picked.ToArray());
+
+            // 兜底：没有可识别的行，就取最前面几行非空内容
+            var head = new List<string>();
+            for (int i = 0; i < lines.Length && head.Count < 3; i++)
+            {
+                string s = lines[i].Trim();
+                if (s.Length > 0 && s.IndexOf("Status Legend", StringComparison.OrdinalIgnoreCase) < 0) head.Add(s);
+            }
+            return head.Count > 0 ? string.Join(" | ", head.ToArray()) : "(aria2c 没有输出)";
+        }
+
+        /// <summary>内置下载器（HttpClient 单连接）。aria2c 未启用或失败时走这里。</summary>
+        private void FetchWithHttp(string url, string dest, string referer, Action<int> pct)
+        {
             using (HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Get, url))
             {
                 req.Headers.TryAddWithoutValidation("Referer", referer);
@@ -417,14 +491,41 @@ namespace BiliGetter
         {
             if (string.IsNullOrEmpty(Settings.FfmpegPath))
                 throw new Exception("找不到 ffmpeg，无法合并音视频");
+
             string args = "-hide_banner -loglevel error -y -i " + Util.Quote(videoFile);
             if (audioFile != null) args += " -i " + Util.Quote(audioFile);
             args += " -c copy -movflags +faststart " + Util.Quote(outFile);
-            string outp;
-            int code = Util.Run(Settings.FfmpegPath, args, out outp, delegate (Process p) { _current = p; });
-            _current = null;
-            if (code != 0 || !File.Exists(outFile))
-                throw new Exception("ffmpeg 合并失败 (exit " + code + ")" + (outp.Length > 0 ? ": " + Tail(outp) : ""));
+
+            string outp = "";
+            int code = 0;
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                code = Util.Run(Settings.FfmpegPath, args, out outp, delegate (Process p) { _current = p; });
+                _current = null;
+                if (code == 0 && File.Exists(outFile)) return;
+
+                // 第一次失败先别认：目标文件被播放器 / 杀毒软件扫描 / 另一个窗口
+                // 占着时就是 EACCES(-13)。清掉目标（含只读属性）再试一次。
+                if (attempt == 0)
+                {
+                    System.Threading.Thread.Sleep(600);
+                    try
+                    {
+                        if (File.Exists(outFile))
+                        {
+                            File.SetAttributes(outFile, FileAttributes.Normal);
+                            File.Delete(outFile);
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            throw new Exception("ffmpeg 合并失败 (exit " + code + ")"
+                + (outp.Length > 0 ? ": " + Tail(outp) : "")
+                + "\r\n    常见原因：目标文件正被播放器占用、杀毒软件正在扫描，"
+                + "\r\n    或者同一门课开了两个窗口在同时下载。"
+                + "\r\n    下载好的分片已保留，排除占用后再点一次下载即可，不必重新下载。");
         }
 
         private static string Tail(string s)

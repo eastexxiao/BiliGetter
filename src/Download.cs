@@ -75,6 +75,12 @@ namespace BiliGetter
             psi.CreateNoWindow = true;
             psi.RedirectStandardOutput = true;
             psi.RedirectStandardError = true;
+            // ffmpeg / aria2c 在 Windows 上都按 UTF-8 写日志。不显式指定的话，
+            // .NET 会跟随控制台代码页去解码，中文路径就会变成「璇惧爞」这种乱码，
+            // 报错信息也就没法看了。
+            UTF8Encoding childEncoding = new UTF8Encoding(false);
+            psi.StandardOutputEncoding = childEncoding;
+            psi.StandardErrorEncoding = childEncoding;
             using (Process p = Process.Start(psi))
             {
                 if (onStart != null) { try { onStart(p); } catch { } }

@@ -110,6 +110,33 @@ namespace BiliGetter
             return 0;
         }
 
+        /// <summary>
+        /// 读 bili-getter.ini，让 --cli 与图形界面共用同一份设置。
+        ///
+        /// 以前命令行版只做自动搜索，所以手工指定的工具路径、以及界面里存的
+        /// 输出目录，对 --cli 都不起作用——两边行为不一致。
+        /// 只接受「文件确实存在」的路径，避免一条失效配置把命令行也带坏。
+        /// </summary>
+        private static void ApplyIni(DownloadSettings ds)
+        {
+            try
+            {
+                string ini = Path.Combine(Tools.BaseDir, "bili-getter.ini");
+                if (!File.Exists(ini)) return;
+                foreach (string line in File.ReadAllLines(ini))
+                {
+                    int eq = line.IndexOf('=');
+                    if (eq < 1) continue;
+                    string k = line.Substring(0, eq).Trim();
+                    string v = line.Substring(eq + 1).Trim();
+                    if (k == "ffmpeg_path" && v.Length > 0 && File.Exists(v)) ds.FfmpegPath = v;
+                    else if (k == "aria2c_path" && v.Length > 0 && File.Exists(v)) ds.Aria2cPath = v;
+                    else if (k == "aria2c") ds.UseAria2c = (v == "1") && ds.Aria2cPath != null;
+                }
+            }
+            catch { }
+        }
+
         private static int CmdDl(BiliSession s, string target, int capIndex, int maxItems)
         {
             Target t = TargetResolver.Resolve(target);
@@ -123,8 +150,11 @@ namespace BiliGetter
             ds.FfmpegPath = Tools.FindFfmpeg();
             ds.Aria2cPath = Tools.FindAria2c();
             ds.UseAria2c = ds.Aria2cPath != null;
+            ApplyIni(ds);
             ds.QualityCap = Quality.CapForIndex(capIndex);
             Console.WriteLine("[out]     " + ds.OutDir + "  useAria2c=" + ds.UseAria2c);
+            Console.WriteLine("[tools]   ffmpeg=" + (ds.FfmpegPath ?? "NOT FOUND"));
+            Console.WriteLine("[tools]   aria2c=" + (ds.Aria2cPath ?? "NOT FOUND"));
 
             Downloader d = new Downloader();
             d.Settings = ds;
