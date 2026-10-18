@@ -157,12 +157,35 @@ namespace BiliGetter
             Downloader d = new Downloader();
             d.Settings = ds;
             d.Log = delegate (string m) { Console.WriteLine("  " + m); };
+            // 终端里用回车原地刷新；被重定向到文件时按 10% 采样打印，便于事后核对
+            bool live = !Console.IsOutputRedirected;
+            double lastPct = -1;
+            long lastBytes = -1;
+            d.Transfer = delegate (TransferProgress p)
+            {
+                if (live)
+                {
+                    Console.Write("\r    " + p.Stage + "  " + p.SizeText() + "  " + p.SpeedText() + "        ");
+                    return;
+                }
+                double pct = p.Percent;
+                if (pct < 0) return;
+                // 数值没变就别重复打印（合并/收尾阶段会反复报同一帧）
+                if (pct == lastPct && p.Received == lastBytes) return;
+                if (lastPct < 0 || pct - lastPct >= 10 || pct >= 100)
+                {
+                    lastPct = pct;
+                    lastBytes = p.Received;
+                    Console.WriteLine("    " + p.Stage + " " + (int)pct + "%  " + p.SizeText() + "  " + p.SpeedText());
+                }
+            };
 
             int ok = 0, fail = 0;
             for (int i = 0; i < items.Count && i < maxItems; i++)
             {
                 try { if (d.DownloadOne(s, items[i], null)) ok++; else fail++; }
                 catch (Exception ex) { fail++; Console.WriteLine("  FAIL " + items[i].Title + ": " + ex.Message); }
+                if (live) Console.WriteLine();
             }
             Console.WriteLine("[done]    ok=" + ok + " fail=" + fail);
             return fail == 0 ? 0 : 1;
@@ -222,6 +245,12 @@ namespace BiliGetter
                 return 1;
             }
             root.UpdateLayout();
+
+            // 截图里带上「下载中」的示例数据，才能检查这一行的排布
+            w.FillDemoTransfer();
+            root.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                new Action(delegate { }), System.Windows.Threading.DispatcherPriority.ContextIdle);
 
             int cw = (int)Math.Ceiling(root.ActualWidth);
             int ch = (int)Math.Ceiling(root.ActualHeight);

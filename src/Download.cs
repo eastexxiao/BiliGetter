@@ -13,6 +13,54 @@ using System.Threading;
 namespace BiliGetter
 {
     // ------------------------------------------------------------------ items
+    /// <summary>
+    /// 一次分片传输（视频或音频）的实时进度。
+    ///
+    /// 两条下载路径都会填它：
+    ///   · 内置下载器：自己按块读流，算字节增速；
+    ///   · aria2c：解析它每秒钟打印的
+    ///     [#1 SIZE:1.2MiB/5.0MiB(24%) CN:16 DL:2.1MiB ETA:1s]
+    ///     里面的 SIZE 与 DL。
+    /// </summary>
+    public sealed class TransferProgress
+    {
+        /// <summary>所属阶段："视频" / "音频"。</summary>
+        public string Stage = "";
+        /// <summary>已收到字节。</summary>
+        public long Received;
+        /// <summary>总字节；-1 表示未知（服务器没给 Content-Length）。</summary>
+        public long Total = -1;
+        /// <summary>每秒字节；0 表示还算不出来。</summary>
+        public double BytesPerSecond;
+
+        /// <summary>0~100；未知总长时返回 -1。</summary>
+        public int Percent
+        {
+            get { return Total > 0 ? (int)(Received * 100L / Total) : -1; }
+        }
+
+        public string SizeText()
+        {
+            if (Received < 0) return "";   // 非传输阶段（例如「合并音视频」）
+            if (Total > 0) return Fmt(Received) + " / " + Fmt(Total);
+            return Fmt(Received);
+        }
+
+        public string SpeedText()
+        {
+            return BytesPerSecond > 1 ? Fmt((long)BytesPerSecond) + "/s" : "—";
+        }
+
+        public static string Fmt(long bytes)
+        {
+            if (bytes < 0) return "?";
+            if (bytes >= 1024L * 1024 * 1024) return (bytes / 1024.0 / 1024 / 1024).ToString("0.00") + " GB";
+            if (bytes >= 1024L * 1024) return (bytes / 1024.0 / 1024).ToString("0.0") + " MB";
+            if (bytes >= 1024) return (bytes / 1024.0).ToString("0") + " KB";
+            return bytes + " B";
+        }
+    }
+
     public sealed class DownloadItem
     {
         public string Bvid = "";

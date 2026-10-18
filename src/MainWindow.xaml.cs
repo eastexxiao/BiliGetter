@@ -25,6 +25,11 @@ namespace BiliGetter
         private volatile bool _stop;
         private Downloader _downloader;
 
+        // 当前正在传输的项，供进度回调拼出「第 n/N 项 · 标题 · 视频/音频」
+        private int _curIndex;
+        private int _curTotal;
+        private string _curTitle = "";
+
         /// <summary>清晰度下拉的选项，索引与 Quality.CapForIndex 一一对应。</summary>
         private static readonly string[] QualityNames = { "最高可用", "1080P", "720P", "480P", "360P" };
 
@@ -397,12 +402,17 @@ namespace BiliGetter
                 _downloader = new Downloader();
                 _downloader.Settings = _settings;
                 _downloader.Log = Log;
+                _downloader.Transfer = OnTransfer;
                 try
                 {
                     for (int i = 0; i < sel.Count; i++)
                     {
                         if (_stop) break;
                         DownloadItem it = sel[i];
+                        _curIndex = i + 1;
+                        _curTotal = sel.Count;
+                        _curTitle = it.Title;
+                        Ui(delegate { ResetTransfer(); });
                         try
                         {
                             bool done = _downloader.DownloadOne(_session, it, delegate (int pct) { });
@@ -425,6 +435,7 @@ namespace BiliGetter
                     _stop = false;
                     Ui(delegate
                     {
+                        ResetTransfer();
                         BtnDownload.IsEnabled = true;
                         BtnFetch.IsEnabled = true;
                         BtnStop.IsEnabled = false;
@@ -435,6 +446,63 @@ namespace BiliGetter
             });
             th.IsBackground = true;
             th.Start();
+        }
+
+        // ------------------------------------------------------------ 传输进度
+        /// <summary>
+        /// 下载线程回调：更新「当前文件」的进度条与速度。
+        /// aria2c 时为每秒一次（解析它自己的摘要行），内置下载器为每 250ms 一次。
+        /// </summary>
+        private void OnTransfer(TransferProgress p)
+        {
+            if (p == null) return;
+            Ui(delegate
+            {
+                string head = _curTotal > 0
+                    ? "第 " + _curIndex + "/" + _curTotal + " 项 · " + _curTitle + " · " + p.Stage
+                    : p.Stage;
+                string size = p.SizeText();
+                TxtTransfer.Text = size.Length > 0 ? head + "    " + size : head;
+                TxtSpeed.Text = p.SpeedText();
+
+                int pct = p.Percent;
+                if (pct < 0)
+                {
+                    // 服务器没给总长：显示滚动条，而不是假装 0%
+                    BarFile.IsIndeterminate = true;
+                }
+                else
+                {
+                    BarFile.IsIndeterminate = false;
+                    BarFile.Value = pct > 100 ? 100 : pct;
+                }
+            });
+        }
+
+        private void ResetTransfer()
+        {
+            TxtTransfer.Text = "";
+            TxtSpeed.Text = "";
+            BarFile.IsIndeterminate = false;
+            BarFile.Value = 0;
+        }
+
+        /// <summary>
+        /// 只给 `cli ui` 用：把传输行和摘要填成示例数据，
+        /// 这样界面回归截图能看到「下载中」的真实排布。
+        /// </summary>
+        public void FillDemoTransfer()
+        {
+            _curIndex = 3;
+            _curTotal = 16;
+            _curTitle = "[P03]白平衡与色调：一步定冷暖";
+            TransferProgress p = new TransferProgress();
+            p.Stage = "视频";
+            p.Received = 47400000;
+            p.Total = 95600000;
+            p.BytesPerSecond = 12.6 * 1024 * 1024;
+            OnTransfer(p);
+            TxtSummary.Text = "共 16 项，已勾选 16 项";
         }
 
         private void SetRowState(DownloadItem it, string status, string quality)

@@ -276,6 +276,21 @@ namespace BiliGetter
     {
         public DownloadSettings Settings = new DownloadSettings();
         public Action<string> Log;
+
+        /// <summary>实时传输进度。回调发生在后台线程，调用方自己切到 UI 线程。</summary>
+        public Action<TransferProgress> Transfer;
+
+        private void Report(string stage, long got, long total, double speed)
+        {
+            Action<TransferProgress> cb = Transfer;
+            if (cb == null) return;
+            TransferProgress p = new TransferProgress();
+            p.Stage = stage;
+            p.Received = got;
+            p.Total = total;
+            p.BytesPerSecond = speed;
+            try { cb(p); } catch { }
+        }
         public volatile bool Cancelled;
         private Process _current;
 
@@ -365,9 +380,9 @@ namespace BiliGetter
                 string vf = Path.Combine(tmp, "v.m4s");
                 string af = Path.Combine(tmp, "a.m4s");
                 Note("  " + it.Title + "  [" + picked.Label + "]");
-                FetchTo(picked.VideoUrl, vf, it.Referer, pct);
+                FetchTo(picked.VideoUrl, vf, it.Referer, "视频");
                 bool hasAudio = !string.IsNullOrEmpty(picked.AudioUrl);
-                if (hasAudio) FetchTo(picked.AudioUrl, af, it.Referer, null);
+                if (hasAudio) FetchTo(picked.AudioUrl, af, it.Referer, "音频");
 
                 // 分片没落盘就别再叫 ffmpeg 了：那只会得到 "No such file or directory"，
                 // 把真正的原因（下载阶段就已经失败）盖掉。
@@ -378,10 +393,13 @@ namespace BiliGetter
                     throw new Exception("音频分片没有下载成功（临时文件不存在或为空），"
                         + "失败发生在下载阶段，详见上面的报错");
 
+                // 合并（尤其 4K 大文件）要好几秒，进度条不能干等着不动
+                Report("合并音视频", -1, -1, 0);
                 Merge(vf, hasAudio ? af : null, outFile);
                 merged = true;
                 double mb = new FileInfo(outFile).Length / 1048576.0;
                 Note("  ✓ 完成 " + it.Title + ".mp4  (" + mb.ToString("0.00") + " MB)");
+                if (pct != null) pct(100);
                 return true;
             }
             finally
@@ -444,7 +462,7 @@ namespace BiliGetter
             }
         }
 
-        private void FetchTo(string url, string dest, string referer, Action<int> pct)
+        private void FetchTo(string url, string dest, string referer, string stage)
         {
             if (Cancelled) return;
 
@@ -452,7 +470,7 @@ namespace BiliGetter
             {
                 try
                 {
-                    FetchWithAria2c(url, dest, referer, pct);
+                    FetchWithAria2c(url, dest, referer, stage);
                     return;
                 }
                 catch (Exception ex)
@@ -465,27 +483,112 @@ namespace BiliGetter
                 }
             }
 
-            FetchWithHttp(url, dest, referer, pct);
+            FetchWithHttp(url, dest, referer, stage);
         }
 
-        /// <summary>用 aria2c 多线程下载；失败时抛异常，由 FetchTo 决定是否回退。</summary>
-        private void FetchWithAria2c(string url, string dest, string referer, Action<int> pct)
+        /// <summary>
+        /// 用 aria2c 多线程下载；失败时抛异常，由 FetchTo 决定是否回退。
+        ///
+        /// 进度不解析 aria2c 的控制台输出：实测它在标准输出被重定向时
+        /// 根本不打印摘要行，等拿到就已经下载完了。改为盯输出文件的体积
+        /// （因此必须 --file-allocation=none，否则 aria2c 会预分配空间，
+        /// 文件体积一上来就是满的，进度看着永远是 100%）。
+        /// 总长度用一次 Range: bytes=0-0 的请求拿到，进度条才能显示百分比。
+        /// </summary>
+        private void FetchWithAria2c(string url, string dest, string referer, string stage)
         {
             string dir = Path.GetDirectoryName(dest);
             string name = Path.GetFileName(dest);
+            long total = ProbeLength(url, referer);
+
             string args = "-x16 -s16 -j16 -k 5M --allow-overwrite=true --auto-file-renaming=false"
+                + " --file-allocation=none"
                 + " --max-tries=3 --retry-wait=2 --timeout=30 --connect-timeout=15"
                 + " --console-log-level=warn --summary-interval=0"
                 + " --header=" + Util.Quote("Referer: " + referer)
                 + " --header=" + Util.Quote("Origin: https://www.bilibili.com")
                 + " --header=" + Util.Quote("User-Agent: " + Settings.UserAgent)
                 + " -d " + Util.Quote(dir) + " -o " + Util.Quote(name) + " " + Util.Quote(url);
+
+            _ariaStop = false;
+            double lastSpeed = 0;
+            System.Threading.Thread monitor = new System.Threading.Thread(delegate ()
+            {
+                long lastSize = 0;
+                long lastMs = Environment.TickCount;
+                while (!_ariaStop)
+                {
+                    System.Threading.Thread.Sleep(300);
+                    if (_ariaStop) break;
+
+                    long size = 0;
+                    try { if (File.Exists(dest)) size = new FileInfo(dest).Length; } catch { }
+                    long now = Environment.TickCount;
+                    long dt = Math.Max(1, now - lastMs);
+                    if (size > lastSize)
+                    {
+                        double inst = (size - lastSize) * 1000.0 / dt;
+                        lastSpeed = lastSpeed <= 0 ? inst : lastSpeed * 0.55 + inst * 0.45;
+                        lastSize = size;
+                        lastMs = now;
+                    }
+                    Report(stage, size, total, lastSpeed);
+                }
+            });
+            monitor.IsBackground = true;
+            monitor.Start();
+
             string outp;
-            int code = Util.Run(Settings.Aria2cPath, args, out outp, delegate (Process p) { _current = p; });
-            _current = null;
+            int code;
+            try
+            {
+                code = Util.Run(Settings.Aria2cPath, args, out outp, delegate (Process p) { _current = p; });
+            }
+            finally
+            {
+                _current = null;
+                _ariaStop = true;
+            }
+
             if (code != 0 || !File.Exists(dest))
                 throw new Exception("exit " + code + (outp.Length > 0 ? "，" + Aria2cReason(outp) : ""));
-            if (pct != null) pct(100);
+
+            long finalSize = 0;
+            try { finalSize = new FileInfo(dest).Length; } catch { }
+            Report(stage, finalSize, total > 0 ? total : finalSize, lastSpeed);
+        }
+
+        /// <summary>aria2c 体积监控线程的停止标志。</summary>
+        private volatile bool _ariaStop;
+
+        /// <summary>
+        /// 用 Range: bytes=0-0 探一次总长度（服务器回 206 + Content-Range）。
+        /// 只为了进度条的百分比；失败返回 -1，界面自动退化成滚动条。
+        /// </summary>
+        private long ProbeLength(string url, string referer)
+        {
+            try
+            {
+                using (HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Get, url))
+                {
+                    req.Headers.TryAddWithoutValidation("Referer", referer);
+                    req.Headers.TryAddWithoutValidation("User-Agent", Settings.UserAgent);
+                    req.Headers.TryAddWithoutValidation("Range", "bytes=0-0");
+                    using (HttpResponseMessage resp = MediaClient.Instance.Send(req, HttpCompletionOption.ResponseHeadersRead))
+                    {
+                        if (resp.Content.Headers.ContentRange != null
+                            && resp.Content.Headers.ContentRange.Length.HasValue
+                            && resp.Content.Headers.ContentRange.Length.Value > 0)
+                            return resp.Content.Headers.ContentRange.Length.Value;
+
+                        if (resp.Content.Headers.ContentLength.HasValue
+                            && resp.Content.Headers.ContentLength.Value > 0)
+                            return resp.Content.Headers.ContentLength.Value;
+                        return -1L;
+                    }
+                }
+            }
+            catch { return -1L; }
         }
 
         /// <summary>
@@ -546,7 +649,7 @@ namespace BiliGetter
         }
 
         /// <summary>内置下载器（HttpClient 单连接）。aria2c 未启用或失败时走这里。</summary>
-        private void FetchWithHttp(string url, string dest, string referer, Action<int> pct)
+        private void FetchWithHttp(string url, string dest, string referer, string stage)
         {
             using (HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Get, url))
             {
@@ -564,18 +667,40 @@ namespace BiliGetter
                     {
                         byte[] buf = new byte[131072];
                         long done = 0;
+                        long startMs = Environment.TickCount;
+                        long lastMs = startMs;
+                        long lastDone = 0;
+                        double speed = 0;
                         int n;
                         while ((n = st.Read(buf, 0, buf.Length)) > 0)
                         {
                             if (Cancelled) return;
                             fs.Write(buf, 0, n);
                             done += n;
-                            if (pct != null && total > 0) pct((int)(done * 100 / total));
+
+                            // 每 250ms 报一次：单连接时速度要自己算，
+                            // 用一段滑动平均，避免数字乱跳。
+                            long now = Environment.TickCount;
+                            if (now - lastMs >= 250)
+                            {
+                                double inst = (done - lastDone) * 1000.0 / Math.Max(1, now - lastMs);
+                                speed = speed <= 0 ? inst : speed * 0.5 + inst * 0.5;
+                                lastMs = now;
+                                lastDone = done;
+                                Report(stage, done, total, speed);
+                            }
                         }
+                        // 小文件可能在一个采样间隔内就传完，速度还是 0；
+                        // 用整体平均速度兜底，免得界面显示成「—」。
+                        if (speed <= 0)
+                        {
+                            long ms = Math.Max(1, Environment.TickCount - startMs);
+                            speed = done * 1000.0 / ms;
+                        }
+                        Report(stage, done, total, speed);
                     }
                 }
             }
-            if (pct != null) pct(100);
         }
 
         private void Merge(string videoFile, string audioFile, string outFile)

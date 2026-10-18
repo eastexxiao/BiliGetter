@@ -125,6 +125,7 @@
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- 标题栏：名称 + 账号 + 登录 -->
@@ -213,8 +214,24 @@
             </DataGrid.Columns>
         </DataGrid>
 
+        <!-- 当前文件的实时进度与速度。aria2c（多线程）和内置下载器（单线程）
+             都会填这一行：前者解析 aria2c 自己的摘要行，后者按块统计字节。 -->
+        <Grid Grid.Row="3" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="TxtTransfer" Grid.Column="0" Style="{StaticResource Hint}"
+                       MinWidth="360" MaxWidth="560" Text=""/>
+            <ProgressBar x:Name="BarFile" Grid.Column="1" Height="6" Margin="14,0"
+                         VerticalAlignment="Center" Minimum="0" Maximum="100" Value="0"/>
+            <TextBlock x:Name="TxtSpeed" Grid.Column="2" Style="{StaticResource Hint}"
+                       MinWidth="92" TextAlignment="Right" Text=""/>
+        </Grid>
+
         <!-- 动作栏 -->
-        <Grid Grid.Row="3" Margin="0,12,0,0">
+        <Grid Grid.Row="4" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
@@ -233,7 +250,7 @@
         </Grid>
 
         <!-- 日志 -->
-        <Expander Grid.Row="4" Header="日志" IsExpanded="True" Margin="0,12,0,0">
+        <Expander Grid.Row="5" Header="日志" IsExpanded="True" Margin="0,12,0,0">
             <TextBox x:Name="TxtLog" Height="130" IsReadOnly="True" AcceptsReturn="True"
                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
                      TextWrapping="NoWrap" FontFamily="Consolas" FontSize="12"
