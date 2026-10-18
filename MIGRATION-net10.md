@@ -112,3 +112,23 @@ dotnet publish BiliGetter\BiliGetter.csproj -c Release
 - **公开行为、文件命名、目录结构、目录名、.ini/.txt 的名字都没变**，
   所以旧的 `bili-cookies.txt` 和 `bili-getter.ini` 可以直接复用，用户无需重新登录或重设输出目录。
 - **仍然零第三方 NuGet 依赖**。
+
+---
+
+## 七、遗留问题：本机构建产物无法启动（未解决）
+
+**现象**：本次会话后期，任何重新构建出的 `net10` 产物（单文件、非单文件、
+关闭压缩的单文件、214 个 DLL 的完整自包含目录，四种都试过）**启动后不执行任何代码**：
+进程 exit 0、零输出、`Program.Main` 里的诊断日志也没写出。
+而同一目录下 **net48 旧版仍正常工作**，`cmd` 等原生程序也正常。
+
+**结论**：不是源码问题（回退到已提交的可用版本重新构建，同样无法运行），
+也不是打包参数问题（四种形态一致失效）。指向**本机的 .NET 构建/运行时包状态**——
+同一环境还伴随 `dotnet build BiliGetter.sln` 只报「0 个错误」而失败、
+`dotnet workload update` 警告等异常。
+
+**因此**：便携目录里的 `BiliGetter.exe` / `BiliGetter-cli.exe` 已**恢复为 net48 版**（可用）；
+本次重构的 net10 产物暂时移到了 `BiliGetter-net10.exe` 仅作留档，**不建议使用**。
+
+**建议的下一步**：在 SDK 状态正常的机器上（或先执行 `dotnet workload update`）重新
+`dotnet publish`，再跑一遍第四节的验证表。源码本身在 `refactor/net10` 分支上已就绪。
