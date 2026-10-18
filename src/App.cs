@@ -487,8 +487,28 @@ namespace BiliGetter
                 + (hasAria2c ? _settings.Aria2cPath : "未找到（可选，缺了用单线程下载）");
             _lblTools.ForeColor = hasFfmpeg ? Color.DimGray : Color.Firebrick;
 
+            // 工具放在程序目录之外时，可能被「受控文件夹访问」挡住，
+            // 结果是它写不进「任何」目录（实测：输出目录换成别处照样失败）。
+            // 这里只做提醒，不阻止使用。
+            if ((hasFfmpeg && !InBaseDir(_settings.FfmpegPath))
+                || (hasAria2c && !InBaseDir(_settings.Aria2cPath)))
+            {
+                _lblTools.Text += "     ⚠ 工具不在程序目录：若下载报 Access is denied，把他们移回程序目录即可";
+            }
+
             _chkAria2c.Enabled = hasAria2c;
             if (!hasAria2c) _chkAria2c.Checked = false;
+        }
+
+        /// <summary>判断某个 exe 是否就在程序目录（含子目录）里。</summary>
+        private static bool InBaseDir(string path)
+        {
+            try
+            {
+                string root = Path.GetFullPath(Tools.BaseDir).TrimEnd('\\') + "\\";
+                return Path.GetFullPath(path).StartsWith(root, StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return true; }   // 判断不出来就别打扰用户
         }
 
         /// <summary>启动检查：ffmpeg 必需、aria2c 可选；任一缺失就弹对话框。</summary>

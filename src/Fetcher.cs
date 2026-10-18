@@ -522,12 +522,15 @@ namespace BiliGetter
                 if (joined.IndexOf("Access is denied", StringComparison.OrdinalIgnoreCase) >= 0
                     || joined.IndexOf("errNum=5", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    joined += "\r\n    → 本程序自己往这个目录写文件是成功的，但 aria2c 写不进去。"
-                        + "\r\n      典型原因：Windows「受控文件夹访问」只放行了 BiliGetter.exe，"
-                        + "\r\n      没有放行 aria2c.exe / ffmpeg.exe。"
-                        + "\r\n      解决一：Windows 安全中心 → 病毒和威胁防护 → 勒索软件防护 →"
-                        + "\r\n              受控文件夹访问 → 允许应用通过，把 aria2c.exe 和 ffmpeg.exe 加进去。"
-                        + "\r\n      解决二：把输出目录换到不受保护的路径（例如 D:\\bili-dl）。";
+                    joined += "\r\n    → 本程序自己往这个目录写文件是成功的，但 aria2c / ffmpeg 写不进去。"
+                        + "\r\n      这是「工具不在受信任位置」而不是输出目录的问题：Windows 的"
+                        + "\r\n      「受控文件夹访问」按可执行文件路径放行，主程序被放行了，"
+                        + "\r\n      但放在别处的 aria2c.exe / ffmpeg.exe 没有。"
+                        + "\r\n      解决一（最省事，已实测有效）：把 aria2c.exe 和 ffmpeg.exe 放到"
+                        + "\r\n              BiliGetter.exe 同一个文件夹里，程序会自动优先用它们。"
+                        + "\r\n      解决二：安全中心 → 病毒和威胁防护 → 勒索软件防护 → 受控文件夹访问 →"
+                        + "\r\n              允许应用通过，逐个添加这两个 exe 的完整路径。"
+                        + "\r\n      解决三：把输出目录换到不受保护的路径（例如 D:\\bili-dl）。";
                 }
                 return joined;
             }
