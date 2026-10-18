@@ -3,7 +3,7 @@
   <!--
     B 站下载器 —— 单一自包含单文件程序。
 
-      双击                          -> 图形界面
+      双击                          -> 图形界面（WPF）
       BiliGetter.exe cli <命令>   -> 命令行模式（同一套核心代码）
 
     图形界面和命令行合并成一个 exe，是因为自包含发布每多一个 exe
@@ -14,13 +14,15 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>BiliGetter</RootNamespace>
     <AssemblyName>BiliGetter</AssemblyName>
-    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
 
   <!--
     自包含 + 单文件：连同 .NET 运行时一起打包。
     拷到任何 64 位 Win10/11 上双击即用，不需要用户安装 .NET。
     （代价是体积：见 BASELINE.md 里的取舍说明）
+    只需要 .NET 10 桌面运行时的话，可改用 README 里的「依赖框架」参数，
+    产物约 0.3 MB。
   -->
   <PropertyGroup>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -31,9 +33,28 @@
     <DebugType>embedded</DebugType>
   </PropertyGroup>
 
-  <!-- 共享核心源码都在 ..\src\ 下 -->
+  <!-- 共享核心源码都在 ..\src\ 下；界面部分是 XAML。 -->
   <ItemGroup>
     <Compile Include="..\src\*.cs" LinkBase="src" />
+  </ItemGroup>
+
+  <!--
+    XAML 放在 ..\src\，不在项目目录内，所以 SDK 的默认通配找不到，必须显式声明。
+    Link 让 XAML 与 code-behind 保持同一个逻辑目录，x:Class 才能和 .xaml.cs 对上。
+  -->
+  <ItemGroup>
+    <Page Include="..\src\MainWindow.xaml" Link="src\MainWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="..\src\LoginWindow.xaml" Link="src\LoginWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="..\src\ToolsWindow.xaml" Link="src\ToolsWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
   </ItemGroup>
 
 </Project>

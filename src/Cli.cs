@@ -2,10 +2,8 @@
 // 与图形界面共用同一套核心代码（BiliApi / Fetcher / Downloader）。
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Threading;
-using System.Windows.Forms;
 
 namespace BiliGetter
 {
@@ -71,9 +69,9 @@ namespace BiliGetter
             Console.WriteLine("[qr] url len=" + (url == null ? 0 : url.Length) + "  key=" + (key == null ? "(none)" : key.Substring(0, Math.Min(8, key.Length)) + "..."));
             QrCode qr = QrCode.Encode(url, QrTables.LevelM);
             Console.WriteLine("[qr] version=v" + qr.TypeNumber + " modules=" + qr.ModuleCount);
-            Bitmap bmp = Tools.RenderQr(qr, 6, 4);
-            bmp.Save(outPath, System.Drawing.Imaging.ImageFormat.Png);
-            Console.WriteLine("[qr] wrote " + outPath + "  " + bmp.Width + "x" + bmp.Height);
+            System.Windows.Media.Imaging.BitmapSource src = Tools.RenderQr(qr, 6, 4);
+            Tools.SavePng(src, outPath);
+            Console.WriteLine("[qr] wrote " + outPath + "  " + src.PixelWidth + "x" + src.PixelHeight);
             Console.WriteLine("[qr] scanning is up to you; the poll endpoint was verified separately.");
             return 0;
         }
@@ -185,44 +183,64 @@ namespace BiliGetter
             return 0;
         }
 
-        /// Renders the real MainForm to a PNG without needing a visible desktop,
-        /// and dumps the computed layout so it can be checked deterministically.
+        /// <summary>
+        /// 把主窗口真实渲染成 PNG，不需要可见桌面，用于界面回归比对。
+        /// 用 renderOnly 构造，避免启动时的网络请求和可能的模态对话框卡住。
+        /// </summary>
         private static int CmdUi(string outPath)
         {
-            MainForm f = new MainForm();
-            f.ClientSize = new System.Drawing.Size(1000, 720);
-            IntPtr h = f.Handle;          // force handle + layout
-            f.CreateControl();
-            f.PerformLayout();
-            System.Windows.Forms.Application.DoEvents();
-            Console.WriteLine("[ui] client=" + f.ClientSize.Width + "x" + f.ClientSize.Height);
-            Dump(f, 0);
-
-            f.Show();
-            System.Windows.Forms.Application.DoEvents();
-            System.Threading.Thread.Sleep(400);
-            System.Windows.Forms.Application.DoEvents();
-            using (Bitmap bmp = new Bitmap(f.ClientSize.Width, f.ClientSize.Height))
+            // 必须有 Application 实例，否则 Window 的 ThemeMode（Fluent 主题）
+            // 和隐式样式都不会加载，渲染出来的外观和真实运行不一致。
+            if (System.Windows.Application.Current == null)
             {
-                f.DrawToBitmap(bmp, new Rectangle(0, 0, bmp.Width, bmp.Height));
-                bmp.Save(outPath, System.Drawing.Imaging.ImageFormat.Png);
-                Console.WriteLine("[ui] wrote " + outPath);
+                System.Windows.Application app = new System.Windows.Application();
+                app.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
             }
-            f.Close();
-            f.Dispose();
-            return 0;
-        }
 
-        private static void Dump(Control c, int depth)
-        {
-            string pad = new string(' ', depth * 2);
-            string txt = c.Text == null ? "" : c.Text.Replace("\r", " ").Replace("\n", " ");
-            if (txt.Length > 34) txt = txt.Substring(0, 34) + "..";
-            Console.WriteLine(pad + c.GetType().Name
-                + " [" + c.Left + "," + c.Top + " " + c.Width + "x" + c.Height + "]"
-                + " dock=" + c.Dock + " vis=" + c.Visible
-                + (txt.Length > 0 ? " \"" + txt + "\"" : ""));
-            foreach (Control ch in c.Controls) Dump(ch, depth + 1);
+            MainWindow w = new MainWindow(true);
+            w.WindowStartupLocation = System.Windows.WindowStartupLocation.Manual;
+            w.Left = -30000;
+            w.Top = -30000;
+            w.ShowInTaskbar = false;
+            w.Show();
+            w.UpdateLayout();
+
+            // DataGrid 的星号列宽是延迟计算的：只 UpdateLayout 一次的话，
+            // 截图会拍到「星号列塌成 10px」的中间态。这里把消息队列跑到空闲，
+            // 让布局真正稳定下来再截。
+            for (int i = 0; i < 4; i++)
+            {
+                System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                    new Action(delegate { }), System.Windows.Threading.DispatcherPriority.ContextIdle);
+                System.Threading.Thread.Sleep(80);
+            }
+
+            System.Windows.FrameworkElement root = w.Content as System.Windows.FrameworkElement;
+            if (root == null)
+            {
+                Console.Error.WriteLine("[ui] 没有根视觉元素");
+                return 1;
+            }
+            root.UpdateLayout();
+
+            int cw = (int)Math.Ceiling(root.ActualWidth);
+            int ch = (int)Math.Ceiling(root.ActualHeight);
+            if (cw <= 0 || ch <= 0)
+            {
+                // 极端情况下布局还没算出来，退回窗口外框尺寸
+                cw = (int)w.Width;
+                ch = (int)w.Height;
+            }
+            Console.WriteLine("[ui] client=" + cw + "x" + ch);
+
+            System.Windows.Media.Imaging.RenderTargetBitmap rtb =
+                new System.Windows.Media.Imaging.RenderTargetBitmap(
+                    cw, ch, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            rtb.Render(root);
+            Tools.SavePng(rtb, outPath);
+            Console.WriteLine("[ui] wrote " + outPath);
+            w.Close();
+            return 0;
         }
     }
 }

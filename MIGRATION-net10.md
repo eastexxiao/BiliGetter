@@ -16,7 +16,7 @@
 | 运行前提 | 需系统自带 .NET Framework 4.8 | **无需安装任何运行时**（已内置） |
 | 依赖 | 零 NuGet 依赖 | **仍然零 NuGet 依赖** |
 
-体积从约 190 KB 涨到 46.9 MB，是因为把 .NET 运行时和 WinForms 一起打包进去了
+体积从约 190 KB 涨到 46.9 MB，是因为把 .NET 运行时和 WPF 一起打包进去了
 （`SelfContained` + `PublishSingleFile` + `EnableCompressionInSingleFile`）。
 这是「拷到任何 Win10/11 双击即用」的必要代价，取舍见 `BASELINE.md`。
 
@@ -137,7 +137,7 @@ cmd /c "BiliGetter.exe --cli tools > out.txt 2>&1"
 
 **结论：对 `WinExe` 不要用 stdout 判断成败，要看文件产物。**
 
-对照实验：一个 5 行的最小 `net10` WinForms 探针（同样的自包含单文件配置）在同一环境下
+对照实验：一个 5 行的最小 `net10` WPF 探针（同样的自包含单文件配置）在同一环境下
 能正常写标记文件并报告 `clr=10.0.2`，证明运行时与构建都没问题。
 
 ## 八、最终验证结果（net10 已部署为正式版）

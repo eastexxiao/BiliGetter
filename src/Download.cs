@@ -13,7 +13,7 @@ using System.Threading;
 namespace BiliGetter
 {
     // ------------------------------------------------------------------ items
-    internal sealed class DownloadItem
+    public sealed class DownloadItem
     {
         public string Bvid = "";
         public string Aid = "";

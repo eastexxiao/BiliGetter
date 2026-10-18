@@ -1,0 +1,166 @@
+<Window x:Class="BiliGetter.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="B 站下载器" Height="840" Width="1220" MinHeight="620" MinWidth="1000"
+        ThemeMode="System" WindowStartupLocation="CenterScreen"
+        FontFamily="Microsoft YaHei UI" FontSize="13">
+
+    <Window.Resources>
+        <!-- 卡片：浅色底 + 1px 淡边框 + 圆角，主题切换时会自动跟随系统色 -->
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="14,12"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#22808080"/>
+            <Setter Property="Background" Value="#0D808080"/>
+        </Style>
+        <Style x:Key="Caption" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#FF7A7A7A"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#FF8A8A8A"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="16,6"/>
+            <Setter Property="MinWidth" Value="84"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="MinWidth" Value="150"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 标题栏：名称 + 账号 + 登录 -->
+        <Grid Grid.Row="0" Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="B 站下载器" FontSize="21" FontWeight="SemiBold"/>
+                <TextBlock Text="课程 · 合集 · 系列 · UP 全量" Style="{StaticResource Hint}" Margin="12,0,0,2"
+                           VerticalAlignment="Bottom"/>
+            </StackPanel>
+            <TextBlock x:Name="TxtAccount" Grid.Column="1" Style="{StaticResource Hint}"
+                       HorizontalAlignment="Right" Margin="16,0,16,0"/>
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <Button x:Name="BtnLogin" Content="登录（扫码）" Click="BtnLogin_Click"/>
+                <Button x:Name="BtnLogout" Content="退出登录" Click="BtnLogout_Click"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- 输入卡片 -->
+        <Border Grid.Row="1" Style="{StaticResource Card}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="地址" Style="{StaticResource Caption}"/>
+                <TextBox x:Name="TxtUrl" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"
+                         ToolTip="BV 号 / 视频链接 / UP 主页 / 合集 / 系列 / 课堂链接"/>
+                <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal" Margin="0,0,0,8">
+                    <Button x:Name="BtnFetch" Content="解析" Click="BtnFetch_Click" IsDefault="True"/>
+                    <Button x:Name="BtnPaste" Content="粘贴" Click="BtnPaste_Click"/>
+                </StackPanel>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="输出" Style="{StaticResource Caption}"/>
+                <TextBox x:Name="TxtOut" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
+                <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" Margin="0,0,0,8">
+                    <Button x:Name="BtnBrowse" Content="浏览…" Click="BtnBrowse_Click"/>
+                    <Button x:Name="BtnOpenDir" Content="打开目录" Click="BtnOpenDir_Click"/>
+                </StackPanel>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="选项" Style="{StaticResource Caption}"/>
+                <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal">
+                    <ComboBox x:Name="CmbQuality"/>
+                    <CheckBox x:Name="ChkAria2c" Content="aria2c 多线程加速" Margin="16,0,0,0"
+                              VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal">
+                    <Button x:Name="BtnTools" Content="工具路径…" Click="BtnTools_Click"/>
+                </StackPanel>
+
+                <!-- 工具状态单独一行，路径长了也不挤其他控件 -->
+                <TextBlock x:Name="TxtTools" Grid.Row="3" Grid.ColumnSpan="3"
+                           Style="{StaticResource Hint}" Margin="0,10,0,0"/>
+            </Grid>
+        </Border>
+
+        <!-- 项目列表 -->
+        <DataGrid x:Name="Grid1" Grid.Row="2" AutoGenerateColumns="False" IsReadOnly="False"
+                  CanUserAddRows="False" CanUserDeleteRows="False" CanUserResizeRows="False"
+                  CanUserSortColumns="False" HeadersVisibility="Column"
+                  GridLinesVisibility="Horizontal" RowHeaderWidth="0"
+                  SelectionMode="Extended" SelectionUnit="FullRow"
+                  EnableRowVirtualization="True" AlternatingRowBackground="#08808080"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <DataGrid.Columns>
+                <DataGridCheckBoxColumn Header="选" Width="44"
+                                        Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}"/>
+                <DataGridTextColumn Header="#" Width="46" IsReadOnly="True" Binding="{Binding Index}"/>
+                <DataGridTextColumn Header="标题" Width="*" IsReadOnly="True" Binding="{Binding Title}"/>
+                <DataGridTextColumn Header="分类" Width="240" IsReadOnly="True" Binding="{Binding Group}"/>
+                <DataGridTextColumn Header="时长" Width="76" IsReadOnly="True" Binding="{Binding Duration}"/>
+                <DataGridTextColumn Header="清晰度" Width="200" IsReadOnly="True" Binding="{Binding Quality}"/>
+                <DataGridTextColumn Header="状态" Width="76" IsReadOnly="True" Binding="{Binding Status}"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- 动作栏 -->
+        <Grid Grid.Row="3" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <Button x:Name="BtnSelectAll" Content="全选" Click="BtnSelectAll_Click" Margin="0,0,0,0"/>
+                <Button x:Name="BtnSelectNone" Content="全不选" Click="BtnSelectNone_Click"/>
+                <Button x:Name="BtnDownload" Content="开始下载" Click="BtnDownload_Click" FontWeight="SemiBold"/>
+                <Button x:Name="BtnStop" Content="停止" Click="BtnStop_Click" IsEnabled="False"/>
+            </StackPanel>
+            <ProgressBar x:Name="Bar" Grid.Column="1" Height="8" Margin="18,0"
+                         VerticalAlignment="Center" Minimum="0" Maximum="1" Value="0"/>
+            <TextBlock x:Name="TxtSummary" Grid.Column="2" Style="{StaticResource Hint}"
+                       MinWidth="132" TextAlignment="Right" Margin="0,0,6,0" Text="未解析"/>
+        </Grid>
+
+        <!-- 日志 -->
+        <Expander Grid.Row="4" Header="日志" IsExpanded="True" Margin="0,12,0,0">
+            <TextBox x:Name="TxtLog" Height="130" IsReadOnly="True" AcceptsReturn="True"
+                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                     TextWrapping="NoWrap" FontFamily="Consolas" FontSize="12"
+                     Padding="8" Margin="0,6,0,0"/>
+        </Expander>
+    </Grid>
+</Window>

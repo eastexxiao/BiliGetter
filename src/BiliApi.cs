@@ -18,7 +18,7 @@ namespace BiliGetter
         public BiliException(int code, string message) : base(message) { Code = code; }
     }
 
-    internal sealed class BiliSession
+    public sealed class BiliSession
     {
         public readonly CookieContainer Cookies = new CookieContainer();
         public string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
