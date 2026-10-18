@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="B 站下载器" Height="840" Width="1220" MinHeight="620" MinWidth="1000"
-        ThemeMode="Light" WindowStartupLocation="CenterScreen"
-        Foreground="#FF1A1A1A"
+        WindowStartupLocation="CenterScreen"
+        Background="#FFFFFFFF" Foreground="#FF1A1A1A"
         FontFamily="Microsoft YaHei UI" FontSize="13">
 
     <Window.Resources>
@@ -28,18 +28,90 @@
             <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+        <!--
+          关键：每类控件都显式给浅色，不依赖系统 / Fluent 主题解析。
+          之前用 ThemeMode 只让「自己设的颜色」变浅，控件模板仍是系统深色，
+          结果是卡片浅、按钮和表格深，观感割裂。
+        -->
         <Style TargetType="Button">
+            <Setter Property="Background" Value="#FFFFFFFF"/>
+            <Setter Property="BorderBrush" Value="#FFD9D9D9"/>
+            <Setter Property="Foreground" Value="#FF1A1A1A"/>
             <Setter Property="Padding" Value="16,6"/>
             <Setter Property="MinWidth" Value="84"/>
             <Setter Property="Margin" Value="6,0,0,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" CornerRadius="4"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#FFF2F6FC"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#FFC9D8EC"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#FFE6EEF9"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#FFAFAFAF"/>
+                                <Setter TargetName="bd" Property="Background" Value="#FFF6F6F6"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#FFE6E6E6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#FFFFFFFF"/>
+            <Setter Property="BorderBrush" Value="#FFD9D9D9"/>
+            <Setter Property="Foreground" Value="#FF1A1A1A"/>
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
         <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="#FFFFFFFF"/>
+            <Setter Property="Foreground" Value="#FF1A1A1A"/>
             <Setter Property="Padding" Value="8,5"/>
             <Setter Property="MinWidth" Value="150"/>
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#FF1A1A1A"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style TargetType="ProgressBar">
+            <Setter Property="Background" Value="#FFEDEDED"/>
+            <Setter Property="Foreground" Value="#FF2B6CB0"/>
+            <Setter Property="BorderBrush" Value="#FFE2E2E2"/>
+        </Style>
+        <Style TargetType="DataGrid">
+            <Setter Property="Background" Value="#FFFFFFFF"/>
+            <Setter Property="RowBackground" Value="#FFFFFFFF"/>
+            <Setter Property="AlternatingRowBackground" Value="#FFFAFAFA"/>
+            <Setter Property="BorderBrush" Value="#FFE2E2E2"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#FFEDEDED"/>
+            <Setter Property="VerticalGridLinesBrush" Value="#FFF3F3F3"/>
+            <Setter Property="Foreground" Value="#FF1A1A1A"/>
+        </Style>
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#FFF3F3F3"/>
+            <Setter Property="Foreground" Value="#FF5B5B5B"/>
+            <Setter Property="BorderBrush" Value="#FFE2E2E2"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="Padding" Value="8,7"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        </Style>
+        <Style TargetType="DataGridCell">
+            <Setter Property="Foreground" Value="#FF1A1A1A"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="6,0"/>
         </Style>
     </Window.Resources>
 
