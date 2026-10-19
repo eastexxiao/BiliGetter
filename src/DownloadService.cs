@@ -48,6 +48,18 @@ namespace BiliGetter
                             {
                                 ok = d.DownloadOne(_bili.Session, it, null);
                             }
+                            catch (DrmProtectedException ex)
+                            {
+                                // 同一门课的所有分集是同一套加密，继续下一项只是白烧流量
+                                r.DrmProtected = true;
+                                r.Fail++;
+                                if (observer != null)
+                                {
+                                    observer.Log("  ✗ " + it.Title + "：" + ex.Message);
+                                    observer.ItemFinished(it, false);
+                                }
+                                break;
+                            }
                             catch (Exception ex)
                             {
                                 if (observer != null) observer.Log("  ✗ " + it.Title + "：" + ex.Message);

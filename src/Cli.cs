@@ -185,13 +185,25 @@ namespace BiliGetter
             };
 
             int ok = 0, fail = 0;
+            bool drm = false;
             for (int i = 0; i < items.Count && i < maxItems; i++)
             {
                 try { if (d.DownloadOne(s, items[i], null)) ok++; else fail++; }
+                catch (DrmProtectedException ex)
+                {
+                    // 同一门课都是同一套加密，继续下一项只是白烧流量
+                    drm = true;
+                    fail++;
+                    Console.WriteLine("  FAIL " + items[i].Title + ": " + ex.Message);
+                    Console.WriteLine("  → DRM 加密，整批停止（不是网络问题，重试无效）");
+                    Console.WriteLine("  → 加密分片已自动清理");
+                    if (live) Console.WriteLine();
+                    break;
+                }
                 catch (Exception ex) { fail++; Console.WriteLine("  FAIL " + items[i].Title + ": " + ex.Message); }
                 if (live) Console.WriteLine();
             }
-            Console.WriteLine("[done]    ok=" + ok + " fail=" + fail);
+            Console.WriteLine("[done]    ok=" + ok + " fail=" + fail + (drm ? "  (drm-protected)" : ""));
             return fail == 0 ? 0 : 1;
         }
         /// Verifies the login polling path: generate a QR, then poll once.

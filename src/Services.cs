@@ -36,6 +36,8 @@ namespace BiliGetter
         public int Ok;
         public int Fail;
         public bool Cancelled;
+        /// <summary>因为遇到 DRM 加密而整体中止（此时不必再继续下一项）。</summary>
+        public bool DrmProtected;
     }
 
     /// <summary>

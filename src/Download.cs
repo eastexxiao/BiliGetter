@@ -61,6 +61,105 @@ namespace BiliGetter
         }
     }
 
+    /// <summary>
+    /// 媒体受 DRM（CENC 加密）保护。
+    /// 这类失败换地址、重试、清缓存都没用 —— 需要内容解密密钥，本工具没有也不该去拿。
+    /// 单独一个类型，是为了让上层「不要重试、整批停下」而不是当成网络抖动。
+    /// </summary>
+    internal sealed class DrmProtectedException : Exception
+    {
+        public DrmProtectedException(string message) : base(message) { }
+    }
+
+    /// <summary>
+    /// 判断一个 m4s/mp4 分片是不是 CENC 加密的。
+    ///
+    /// B 站部分付费课程把媒体打包成 encv / enca（加密视频 / 音频），
+    /// 附带 pssh（保护系统头）和每分片的 senc（样本加密表）。
+    /// ffmpeg 没有密钥时连文件头都读不了：
+    ///   · 音频 → "error reading header" + AVERROR_INVALIDDATA
+    ///   · 视频 → 能打开，但整帧解码报错（密文被当明码解）
+    ///
+    /// 判定只看 moov/stsd 的第一个条目类型（encv / enca 都以 "enc" 开头）。
+    /// bilibili 的 fMP4 把 moov 放在文件开头，所以只读前 1 MB，
+    /// 不会为了检查去扫一个上百 MB 的分片。
+    /// </summary>
+    internal static class EncryptedMedia
+    {
+        private const int HeadBytes = 1024 * 1024;
+
+        public static bool IsEncrypted(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return false;
+
+            byte[] buf = ReadHead(path, HeadBytes);
+            if (buf == null || buf.Length < 32) return false;
+
+            // 只在前面的顶层 box 里找 moov，避免在 mdat 载荷里误命中 "stsd"
+            int moovStart = -1, moovEnd = -1;
+            long pos = 0;
+            while (pos + 8 <= buf.Length)
+            {
+                long size = ((long)buf[pos] << 24) | ((long)buf[pos + 1] << 16)
+                          | ((long)buf[pos + 2] << 8) | buf[pos + 3];
+                if (size <= 0) break;
+                string fourcc = FourCC(buf, (int)pos + 4);
+                if (fourcc == "moov")
+                {
+                    moovStart = (int)pos;
+                    moovEnd = (int)Math.Min(pos + size, buf.Length);
+                    break;
+                }
+                pos += size;
+            }
+            if (moovStart < 0) return false;
+
+            // 在 moov 内找 stsd，条目类型位于 stsd 起点 +20
+            // （8 字节头 + 4 版本/标志 + 4 条目数 + 4 条目大小）
+            for (int i = moovStart + 8; i + 24 <= moovEnd; i++)
+            {
+                // "stsd" = s t s d
+                if (buf[i + 4] != (byte)'s' || buf[i + 5] != (byte)'t'
+                    || buf[i + 6] != (byte)'s' || buf[i + 7] != (byte)'d') continue;
+
+                string entry = FourCC(buf, i + 20);
+                return entry.StartsWith("enc", StringComparison.Ordinal);
+            }
+            return false;
+        }
+
+        private static byte[] ReadHead(string path, int max)
+        {
+            try
+            {
+                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    int want = (int)Math.Min(fs.Length, max);
+                    if (want <= 0) return null;
+                    byte[] buf = new byte[want];
+                    int got = 0;
+                    while (got < want)
+                    {
+                        int n = fs.Read(buf, got, want - got);
+                        if (n <= 0) break;
+                        got += n;
+                    }
+                    if (got == want) return buf;
+                    byte[] trimmed = new byte[got];
+                    Array.Copy(buf, trimmed, got);
+                    return trimmed;
+                }
+            }
+            catch { return null; }
+        }
+
+        private static string FourCC(byte[] b, int at)
+        {
+            if (at + 4 > b.Length) return "";
+            return new string(new char[] { (char)b[at], (char)b[at + 1], (char)b[at + 2], (char)b[at + 3] });
+        }
+    }
+
     public sealed class DownloadItem
     {
         public string Bvid = "";

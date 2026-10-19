@@ -399,8 +399,18 @@ namespace BiliGetter
             try
             {
                 DownloadBatchResult r = await _download.RunAsync(sel, ds, this, _cts.Token);
-                Summary = "下载结束：成功 " + r.Ok + " / 失败 " + r.Fail + (r.Cancelled ? "（已停止）" : "");
-                AppendLog("---- 下载结束：成功 " + r.Ok + " / 失败 " + r.Fail + " ----");
+                if (r.DrmProtected)
+                {
+                    Summary = "已停止：该课程媒体受 DRM 加密";
+                    AppendLog("---- 已停止：媒体是 CENC 加密的（encv / enca），本工具无法解密 ----");
+                    AppendLog("    这不是网络或程序问题：ffmpeg 没有内容解密密钥，换地址、重试、清缓存都无效。");
+                    AppendLog("    加密分片已自动清理，不会占用磁盘。");
+                }
+                else
+                {
+                    Summary = "下载结束：成功 " + r.Ok + " / 失败 " + r.Fail + (r.Cancelled ? "（已停止）" : "");
+                    AppendLog("---- 下载结束：成功 " + r.Ok + " / 失败 " + r.Fail + " ----");
+                }
             }
             catch (Exception ex)
             {

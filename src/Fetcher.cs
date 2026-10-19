@@ -313,6 +313,11 @@ namespace BiliGetter
             {
                 return DownloadOneAttempt(s, it, pct);
             }
+            catch (DrmProtectedException)
+            {
+                // DRM 加密：换地址、重试都不会变。直接上抛，由批处理统一停下。
+                throw;
+            }
             catch (Exception)
             {
                 if (Cancelled) throw;
@@ -375,14 +380,35 @@ namespace BiliGetter
             string tmp = Path.Combine(tmpRoot, Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tmp);
             bool merged = false;
+            bool drmHit = false;
             try
             {
                 string vf = Path.Combine(tmp, "v.m4s");
                 string af = Path.Combine(tmp, "a.m4s");
                 Note("  " + it.Title + "  [" + picked.Label + "]");
-                FetchTo(picked.VideoUrl, vf, it.Referer, "视频");
+
+                // 先下音频（通常几 MB）再下视频（4K 可能上百 MB）。
+                // 顺序有讲究：如果是 DRM 加密课程，下完音频就能识别出来，
+                // 不必先白下 117 MB 的 4K 视频再失败。
                 bool hasAudio = !string.IsNullOrEmpty(picked.AudioUrl);
-                if (hasAudio) FetchTo(picked.AudioUrl, af, it.Referer, "音频");
+                if (hasAudio)
+                {
+                    FetchTo(picked.AudioUrl, af, it.Referer, "音频");
+                    if (EncryptedMedia.IsEncrypted(af))
+                    {
+                        drmHit = true;
+                        throw new DrmProtectedException(
+                            "音频分片是 CENC 加密的（enca + pssh + senc），ffmpeg 没有解密密钥打不开");
+                    }
+                }
+
+                FetchTo(picked.VideoUrl, vf, it.Referer, "视频");
+                if (EncryptedMedia.IsEncrypted(vf))
+                {
+                    drmHit = true;
+                    throw new DrmProtectedException(
+                        "视频分片是 CENC 加密的（encv + pssh + senc），ffmpeg 没有解密密钥打不开");
+                }
 
                 // 分片没落盘就别再叫 ffmpeg 了：那只会得到 "No such file or directory"，
                 // 把真正的原因（下载阶段就已经失败）盖掉。
@@ -406,7 +432,8 @@ namespace BiliGetter
             {
                 // 只有合并成功才清理临时目录。失败时里面是已经下好的 v.m4s / a.m4s
                 // （4K 单个分片就上百 MB），删掉的话整段都得重新下载。
-                if (merged)
+                // 例外是 DRM：分片本来就是解不开的密文，留着只是垃圾。
+                if (merged || drmHit)
                 {
                     try { Directory.Delete(tmp, true); } catch { }
                     try
@@ -707,6 +734,12 @@ namespace BiliGetter
         {
             if (string.IsNullOrEmpty(Settings.FfmpegPath))
                 throw new Exception("找不到 ffmpeg，无法合并音视频");
+
+            // 兜底：万一别处漏了加密检查，这里也要给出准确原因，
+            // 而不是让用户看到 "error reading header" 后去猜是不是文件被占用。
+            if (EncryptedMedia.IsEncrypted(videoFile) || EncryptedMedia.IsEncrypted(audioFile))
+                throw new DrmProtectedException(
+                    "分片是 CENC 加密的（encv / enca），ffmpeg 没有解密密钥，无法合并");
 
             string args = "-hide_banner -loglevel error -y -i " + Util.Quote(videoFile);
             if (audioFile != null) args += " -i " + Util.Quote(audioFile);
